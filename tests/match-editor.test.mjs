@@ -259,7 +259,7 @@ for(const [oldName,newName] of [['2026新生杯','2026年新生杯男子足球�
 
 test('official team and player corrections retain draft relationships and stay within the men tournament',()=>{
   const tournament='2026年新生杯男子足球赛';
-  for(const [team,name,nextTeam,nextName] of [['外国语学院','张三','外院','张三'],['信息管理学院—历史学系联队','张三','信历','张三'],['经济学院','张三','经济','张三'],['生命科学学院','张三','生科','张三'],['数学','申宇颢','数学','申宇灏']]){
+  for(const [team,name,nextTeam,nextName] of [['法学院','张三','法学','张三'],['外国语学院','张三','外院','张三'],['信息管理学院—历史学系联队','张三','信历','张三'],['经济学院','张三','经济','张三'],['生命科学学院','张三','生科','张三'],['数学','申宇颢','数学','申宇灏']]){
     const roster=[{tournament,team,name,number:''}],id=playerId(roster[0]),official=roster.map(normalizeRosterRecord),nextId=playerId(official[0]);
     const match={...blankMatch(),tournament,home:team,away:'城环',title:'小组赛'};
     match.starters.home=[id];setGoalkeeper(match,roster,'home',id);setMatchNumber(match,roster,'home',id,'7');
@@ -279,6 +279,6 @@ test('updated published men roster includes Chenghuan additions and requested sp
   const names=roster.filter(p=>p.team==='城环').map(p=>p.name);assert.equal(names.length,28);
   for(const name of ['西绕彭措','阎帅彤','高晟越','高杰杨','黄恩来'])assert.ok(names.includes(name));
   assert.ok(roster.some(p=>p.team==='数学' && p.name==='申宇灏'));assert.ok(!roster.some(p=>p.name==='申宇颢'));
-  for(const name of ['外院','信历','经济','生科'])assert.ok(roster.some(p=>p.team===name));
-  assert.ok(!roster.some(p=>['外国语学院','信息管理学院—历史学系联队','经济学院','生命科学学院'].includes(p.team)));
+  for(const name of ['法学','外院','信历','经济','生科'])assert.ok(roster.some(p=>p.team===name));
+  assert.ok(!roster.some(p=>['法学院','外国语学院','信息管理学院—历史学系联队','经济学院','生命科学学院'].includes(p.team)));
 });

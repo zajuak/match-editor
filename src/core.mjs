@@ -3,7 +3,7 @@ export const TYPES = ['进球', '点球', '乌龙', '助攻', '黄牌', '红牌'
 export const ICONS = {进球:'G',点球:'PG',乌龙:'icon_w',助攻:'AS',黄牌:'YC',红牌:'RC',两黄:'YYR',射失点球:'PM',换下:'SO',换上:'SI'};
 export const CUSTOM_TOURNAMENT = '__custom__';
 const tournamentNames={'2026新生杯':'2026年新生杯男子足球赛','2026-27五人制女足北大杯':'2026-27北大杯女子足球赛','2026-27女足北大杯':'2026-27北大杯女子足球赛'};
-const teamNames={'外国语学院':'外院','信息管理学院—历史学系联队':'信历','经济学院':'经济','生命科学学院':'生科'};
+const teamNames={'法学院':'法学','外国语学院':'外院','信息管理学院—历史学系联队':'信历','经济学院':'经济','生命科学学院':'生科'};
 const mapped=(map,value)=>Object.hasOwn(map,value)?map[value]:value;
 export function normalizeRosterRecord(player){
   const tournament=mapped(tournamentNames,player.tournament),men=tournament==='2026年新生杯男子足球赛';
