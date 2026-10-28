@@ -56,7 +56,7 @@ def extract(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="本地 data/manifest.json")
-    parser.add_argument("destination", type=Path, help="网站 public/tools/match-editor/data")
+    parser.add_argument("destination", type=Path, help="公开数据输出目录，如 src/data")
     args = parser.parse_args()
     source = json.loads(args.source.read_text())
     manifest = {"version": 1, "tournaments": []}
