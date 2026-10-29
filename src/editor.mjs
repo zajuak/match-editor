@@ -1,7 +1,7 @@
-import {TYPES,ICONS,CUSTOM_TOURNAMENT,escapeXML as esc,blankMatch,rosterFor,parseBatch,sortedEvents,calculateScore,playerLabel,renderPoster,playerId,matchNumber,previousNumber,rememberNumber,setMatchNumber,missingNumbers,restoreState,createPlayerEvents,reconcileOfficialDraft,parseCustomStarters,isGoalkeeper,setGoalkeeper,missingGoalkeepers} from './core.mjs';
+import {TYPES,ICONS,CUSTOM_TOURNAMENT,escapeXML as esc,blankMatch,rosterFor,parseBatch,sortedEvents,calculateScore,playerLabel,renderPoster,playerId,matchNumber,previousNumber,rememberNumber,setMatchNumber,missingNumbers,restoreState,createPlayerEvents,createCustomEvents,parseCustomBatch,reconcileOfficialDraft,parseCustomStarters,isGoalkeeper,setGoalkeeper,missingGoalkeepers} from './core.mjs';
 import {loadOfficialData} from './importers.mjs';
 const $=id=>document.getElementById(id), storageKey='junkai-match-editor-v1';
-let tournaments=[],records=[],match=blankMatch(),numberHistory={},lineupSide='home',editingId=null,pendingEvents=null,svg='',icons={},draggedId=null,toastTimer,rostersReady=false,customDirty=false;
+let tournaments=[],records=[],match=blankMatch(),numberHistory={},lineupSide='home',editingId=null,pendingEvents=null,pendingCustom=null,svg='',icons={},draggedId=null,toastTimer,rostersReady=false,customDirty=false;
 try {
   const saved=JSON.parse(localStorage.getItem(storageKey)||'null');
   ({records,match,numberHistory}=restoreState(saved));
@@ -38,7 +38,7 @@ function syncControls(){
   if(custom){
     if(!customDirty){
       $('custom-home-name').value=match.home;$('custom-away-name').value=match.away;
-      for(const side of ['home','away'])$(`custom-${side}-starters`).value=rosterFor(records,match,side).map(p=>{const number=matchNumber(match,side,p);return `${number?number+' ':''}${p.name}`;}).join('\n');
+      for(const side of ['home','away'])$(`custom-${side}-starters`).value=rosterFor(records,match,side).filter(p=>match.starters[side].includes(playerId(p))).map(p=>{const number=matchNumber(match,side,p);return `${number?number+' ':''}${p.name}`;}).join('\n');
     }
   }
   $('roster-summary').textContent='';$('roster-summary').hidden=true;
@@ -120,7 +120,7 @@ $('lineup-list').addEventListener('change',event=>{
   const id=event.target.value;match.starters[lineupSide]=event.target.checked?[...match.starters[lineupSide],id]:match.starters[lineupSide].filter(n=>n!==id);if(!event.target.checked && match.goalkeepers[lineupSide]===id)match.goalkeepers[lineupSide]='';renderLineup();renderEvents();changed();
 });
 function updateNumber(id,value,{renderFields=true,report=true}={}){
-  try{const number=setMatchNumber(match,records,lineupSide,id,value);numberHistory=rememberNumber(numberHistory,id,match.id,number);pendingEvents=null;$('confirm-batch').disabled=true;if(renderFields)renderLineup();renderEvents();changed();}
+  try{const number=setMatchNumber(match,records,lineupSide,id,value);numberHistory=rememberNumber(numberHistory,id,match.id,number);pendingEvents=null;pendingCustom=null;$('confirm-batch').disabled=true;if(renderFields)renderLineup();renderEvents();changed();}
   catch(error){if(report){toast(error.message);renderLineup();}}
 }
 $('lineup-list').addEventListener('input',event=>{if(event.target.matches('.match-number'))updateNumber(event.target.dataset.playerId,event.target.value,{renderFields:false,report:false});});
@@ -156,9 +156,32 @@ const typeOptions=[...TYPES,'换人'].map(type=>[type,type==='乌龙'?'乌龙球
 fill($('event-type'),typeOptions,'进球');fill($('batch-type'),typeOptions,'进球');
 function fillPlayers(selected='',incoming=''){
   const side=$('event-side').value,roster=rosterFor(records,match,side),items=roster.map(p=>[playerId(p),`${matchNumber(match,side,p)||(isGoalkeeper(match,side,p)?'无号码':'待填号码')}  ${p.name}${isGoalkeeper(match,side,p)?' · 门将':match.starters[side].includes(playerId(p))?' · 首发':''}`]);
-  fill($('event-player'),items,selected,'选择球员');fill($('event-player-in'),items,incoming,'选择换上球员');updateEventFields();
+  fill($('event-player'),items,selected,'选择球员');fill($('event-player-in'),items,incoming,'选择换上球员');
+  $('custom-event-options').innerHTML=roster.map(p=>option(p.name,matchNumber(match,side,p)?`${matchNumber(match,side,p)} 号`:p.name)).join('');
+  for(const [id,nameId,numberId] of [[selected,'custom-event-name','custom-event-number'],[incoming,'custom-event-in-name','custom-event-in-number']]){
+    const player=roster.find(p=>playerId(p)===id);$(nameId).value=player?.name||'';$(numberId).value=player?matchNumber(match,side,player):'';
+  }
+  updateEventFields();
 }
-function updateEventFields(){const substitution=$('event-type').value==='换人';$('substitution-field').hidden=!substitution;$('event-player-in').required=substitution;$('event-player-label').textContent=substitution?'换下球员':'球员';$('event-hint').textContent=$('event-type').value==='乌龙'?'选择造成乌龙的球员及其所属队伍，分数会自动计入对方球队。':isCustom()?'从已输入的首发名单选择球员。':'可以选择报名名单中的所有球员，包括替补。';}
+function updateEventFields(){
+  const substitution=$('event-type').value==='换人',custom=isCustom();
+  $('roster-event-player').hidden=custom;$('custom-event-player').hidden=!custom;
+  $('event-player').required=!custom;$('event-player').disabled=custom;$('custom-event-name').required=custom;
+  $('substitution-field').hidden=!substitution;$('roster-incoming-player').hidden=custom;$('custom-incoming-player').hidden=!custom;
+  $('event-player-in').required=substitution && !custom;$('event-player-in').disabled=custom || !substitution;
+  $('custom-event-in-name').required=substitution && custom;
+  $('custom-event-name').disabled=!custom;$('custom-event-number').disabled=!custom;
+  $('custom-event-in-name').disabled=!custom || !substitution;$('custom-event-in-number').disabled=!custom || !substitution;
+  $('event-player-label').textContent=substitution?'换下球员':'球员';$('custom-event-label').textContent=substitution?'换下球员姓名':'球员姓名';
+  const nameHint=custom?'可填写未列入首发的球员姓名，也可选择已有球员；非首发球员号码可留空。':'可以选择报名名单中的所有球员，包括替补。';
+  $('event-hint').textContent=nameHint+($('event-type').value==='乌龙'?'选择造成乌龙的球员及其所属队伍，分数会自动计入对方球队。':'');
+}
+for(const [nameId,numberId] of [['custom-event-name','custom-event-number'],['custom-event-in-name','custom-event-in-number']])$(nameId).addEventListener('input',()=>{
+  const player=rosterFor(records,match,$('event-side').value).find(p=>p.name===$(nameId).value.trim());$(numberId).value=player?matchNumber(match,$('event-side').value,player):'';
+});
+function rememberEventNumbers(events){
+  for(const event of events){const number=matchNumber(match,event.side,event.playerId);if(number)numberHistory=rememberNumber(numberHistory,event.playerId,match.id,number);}
+}
 function openEvent(event=null){
   if(!requireTeams())return;editingId=event?.id||null;$('event-dialog-title').textContent=event?'编辑事件':'添加事件';$('event-type').value=event?.type||'进球';$('event-time').value=event?.time||'';
   fill($('event-side'),[['home',match.home],['away',match.away]],event?.side||'home');fillPlayers(event?.playerId||'');$('event-error').textContent='';$('event-dialog').showModal();
@@ -166,11 +189,16 @@ function openEvent(event=null){
 $('add-event').addEventListener('click',()=>openEvent());$('event-side').addEventListener('change',()=>fillPlayers());$('event-type').addEventListener('change',updateEventFields);
 $('event-form').addEventListener('submit',event=>{
   event.preventDefault();$('event-error').textContent='';
-  const side=$('event-side').value,type=$('event-type').value,time=$('event-time').value.trim(),number=$('event-player').value,incoming=$('event-player-in').value;
+  const side=$('event-side').value,type=$('event-type').value,time=$('event-time').value.trim();
   try{
-    const events=createPlayerEvents(type,time,side,[number,...(type==='换人'?[incoming]:[])],match,records);
-    if(editingId){const index=match.events.findIndex(e=>e.id===editingId);if(index<0)throw new Error('原事件已不存在。');events[0].id=editingId;match.events.splice(index,1,...events);}else match.events.push(...events);
-    renderEvents();changed();$('event-dialog').close();toast('事件已保存。');
+    const index=editingId?match.events.findIndex(e=>e.id===editingId):-1;if(editingId && index<0)throw new Error('原事件已不存在。');
+    let events;
+    if(isCustom()){
+      const entries=[{name:$('custom-event-name').value,number:$('custom-event-number').value},...(type==='换人'?[{name:$('custom-event-in-name').value,number:$('custom-event-in-number').value}]:[])];
+      const result=createCustomEvents(type,time,side,entries,match,records);events=result.events;records=result.records;match=result.match;
+    }else events=createPlayerEvents(type,time,side,[$('event-player').value,...(type==='换人'?[$('event-player-in').value]:[])],match,records);
+    if(editingId){events[0].id=editingId;match.events.splice(index,1,...events);}else match.events.push(...events);
+    rememberEventNumbers(events);pendingEvents=null;pendingCustom=null;syncControls();save();$('event-dialog').close();toast('事件已保存。');
   }catch(error){$('event-error').textContent=error.message;}
 });
 function reorder(id,targetId){
@@ -189,14 +217,24 @@ $('events-list').addEventListener('dragstart',event=>{const row=event.target.clo
 $('events-list').addEventListener('dragover',event=>{if(event.target.closest('[data-id]'))event.preventDefault();});
 $('events-list').addEventListener('drop',event=>{event.preventDefault();const target=event.target.closest('[data-id]');if(target && draggedId)reorder(draggedId,target.dataset.id);draggedId=null;});
 $('events-list').addEventListener('dragend',()=>{draggedId=null;document.querySelectorAll('.dragging').forEach(el=>el.classList.remove('dragging'));});
-$('batch-events').addEventListener('click',()=>{if(!requireTeams())return;pendingEvents=null;$('batch-input').value='';$('batch-preview').textContent='预览通过后可一次性添加。';$('batch-preview').classList.remove('error');$('confirm-batch').disabled=true;$('batch-dialog').showModal();});
-for(const id of ['batch-type','batch-input'])$(id).addEventListener(id==='batch-type'?'change':'input',()=>{pendingEvents=null;$('confirm-batch').disabled=true;$('batch-preview').textContent='内容已更新，请重新预览。';});
+$('batch-events').addEventListener('click',()=>{
+  if(!requireTeams())return;pendingEvents=null;pendingCustom=null;$('batch-input').value='';$('batch-preview').textContent='预览通过后可一次性添加。';$('batch-preview').classList.remove('error');$('confirm-batch').disabled=true;
+  $('batch-help').textContent=isCustom()?'时间,球队,姓名或“号码 姓名”；可填写未列入首发的球员。换人使用：时间,球队,换下球员,换上球员。':'时间,球队,球员号码或姓名；换人使用：时间,球队,换下球员,换上球员。重名时使用号码。';
+  $('batch-dialog').showModal();
+});
+for(const id of ['batch-type','batch-input'])$(id).addEventListener(id==='batch-type'?'change':'input',()=>{pendingEvents=null;pendingCustom=null;$('confirm-batch').disabled=true;$('batch-preview').textContent='内容已更新，请重新预览。';});
 $('preview-batch').addEventListener('click',()=>{
   $('batch-preview').classList.remove('error');
-  try{pendingEvents=parseBatch($('batch-input').value,$('batch-type').value,match,records);$('batch-preview').innerHTML=`<strong>${pendingEvents.length} 个有效事件</strong><br>`+pendingEvents.map(e=>`${esc(e.time)} · ${esc(match[e.side])} · ${esc(playerLabel(records,match,e))} · ${esc(e.type)}`).join('<br>');$('confirm-batch').disabled=false;}
-  catch(error){pendingEvents=null;$('confirm-batch').disabled=true;$('batch-preview').classList.add('error');$('batch-preview').textContent=error.message;}
+  try{
+    pendingCustom=isCustom()?parseCustomBatch($('batch-input').value,$('batch-type').value,match,records):null;
+    pendingEvents=pendingCustom?.events||parseBatch($('batch-input').value,$('batch-type').value,match,records);
+    $('batch-preview').innerHTML=`<strong>${pendingEvents.length} 个有效事件</strong><br>`+pendingEvents.map(e=>`${esc(e.time)} · ${esc(match[e.side])} · ${esc(playerLabel(pendingCustom?.records||records,pendingCustom?.match||match,e))} · ${esc(e.type)}`).join('<br>');$('confirm-batch').disabled=false;
+  }catch(error){pendingEvents=null;pendingCustom=null;$('confirm-batch').disabled=true;$('batch-preview').textContent=error.message;$('batch-preview').classList.add('error');}
 });
-$('confirm-batch').addEventListener('click',()=>{if(!pendingEvents)return;match.events.push(...pendingEvents);renderEvents();changed();$('batch-dialog').close();pendingEvents=null;toast('批量事件已添加。');});
+$('confirm-batch').addEventListener('click',()=>{
+  if(!pendingEvents)return;if(pendingCustom){records=pendingCustom.records;match=pendingCustom.match;}
+  match.events.push(...pendingEvents);rememberEventNumbers(pendingEvents);syncControls();save();$('batch-dialog').close();pendingEvents=null;pendingCustom=null;toast('批量事件已添加。');
+});
 
 const fileName=()=>(match.title||'比赛赛果').replace(/[\\/:*?"<>|]/g,'-').slice(0,80);
 function canExport(){if(!requireTeams())return false;const missingKeepers=missingGoalkeepers(match,records);if(missingKeepers.length){toast(`请为${missingKeepers.join('、')}${missingKeepers.length>1?'各':''}选择一名首发守门员。`);return false;}const missing=missingNumbers(match,records);if(!missing.length)return true;toast(`请先填写${match.lineupsEnabled===false?'事件球员':'首发与事件球员'}的本场号码：${missing.slice(0,3).join('、')}${missing.length>3?'等':''}。`);return false;}

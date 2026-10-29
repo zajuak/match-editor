@@ -59,7 +59,7 @@ export function setMatchNumber(match,records,side,id,value) {
 export function missingNumbers(match,records) {
   return ['home','away'].flatMap(side=>{
     const used=new Set([...(match.lineupsEnabled!==false && match.showLineups?match.starters[side]:[]),...match.events.filter(ev=>ev.side===side).map(ev=>ev.playerId)]);
-    return rosterFor(records,match,side).filter(p=>used.has(playerId(p)) && !isGoalkeeper(match,side,p) && !matchNumber(match,side,p)).map(p=>`${match[side]} · ${p.name}`);
+    return rosterFor(records,match,side).filter(p=>used.has(playerId(p)) && !isGoalkeeper(match,side,p) && !matchNumber(match,side,p) && (match.tournament!==CUSTOM_TOURNAMENT || match.starters[side].includes(playerId(p)))).map(p=>`${match[side]} · ${p.name}`);
   });
 }
 export const validTime = time => /^(?:\d{1,3}(?:\+\d{1,3})?|点)$/.test(time);
@@ -202,6 +202,47 @@ export function createPlayerEvents(type,time,side,ids,match,records) {
   if(type==='换人' && ids[0]===ids[1])throw new Error('换上与换下球员不能相同。');
   return ids.map((id,j)=>({id:crypto.randomUUID(),time,side,playerId:id,type:type==='换人'?(j?'换上':'换下'):type}));
 }
+export function createCustomEvents(type,time,side,entries,match,records) {
+  if(match.tournament!==CUSTOM_TOURNAMENT)throw new Error('手动填写姓名仅用于自定义比赛。');
+  if(!validTime(time))throw new Error('时间应为 12、40+2 或“点”。');
+  if(!TYPES.includes(type) && type!=='换人')throw new Error('请选择事件类型。');
+  if(!['home','away'].includes(side) || !match[side])throw new Error('请选择球队。');
+  if(entries.length!==(type==='换人'?2:1))throw new Error('请填写事件球员姓名。');
+  const nextMatch=structuredClone(match),nextRecords=[...records];
+  const ids=entries.map(entry=>{
+    const name=String(entry.name??'').trim();
+    if(!name || /^\d+$/.test(name) || /[\r\n\t]/.test(name))throw new Error('请填写有效的球员姓名。');
+    let player=rosterFor(nextRecords,nextMatch,side).find(p=>p.name===name);
+    if(!player){player={tournament:CUSTOM_TOURNAMENT,team:match[side],name,number:''};nextRecords.push(player);}
+    validateRecords(nextRecords);
+    const id=playerId(player);
+    if(String(entry.number??'').trim())setMatchNumber(nextMatch,nextRecords,side,id,entry.number);
+    return id;
+  });
+  const events=createPlayerEvents(type,time,side,ids,nextMatch,nextRecords);
+  return {records:nextRecords,match:nextMatch,events};
+}
+export function parseCustomBatch(text,type,match,records) {
+  const rows=parseDelimited(text.includes(',')?text:text.replaceAll('，',','));
+  if(!rows.length)throw new Error('请输入事件。');
+  let nextMatch=match,nextRecords=records;const events=[];
+  rows.forEach((row,index)=>{
+    try{
+      const [time,team,...values]=row,side=team===match.home?'home':team===match.away?'away':null;
+      if(!side)throw new Error('队伍必须是当前主队或客队。');
+      const entries=values.map(value=>{
+        const roster=rosterFor(nextRecords,nextMatch,side),hits=roster.filter(p=>p.name===value || (matchNumber(nextMatch,side,p) && (matchNumber(nextMatch,side,p)===value || `${matchNumber(nextMatch,side,p)} ${p.name}`===value)));
+        if(hits.length>1)throw new Error('球员不明确，请填写姓名。');
+        if(hits.length===1)return {name:hits[0].name};
+        const numbered=value.match(/^(\d+)\s+(.+)$/);
+        return numbered?{number:numbered[1],name:numbered[2]}:{name:value};
+      });
+      const result=createCustomEvents(type,time,side,entries,nextMatch,nextRecords);
+      nextMatch=result.match;nextRecords=result.records;events.push(...result.events);
+    }catch(error){throw new Error(`第 ${index+1} 行：${error.message}`);}
+  });
+  return {records:nextRecords,match:nextMatch,events};
+}
 export function calculateScore(events) {
   const score={home:0,away:0,shootout:{home:0,away:0}};
   for(const e of events) {
@@ -215,6 +256,7 @@ export const playerLabel = (records,match,event) => {
   const p=rosterFor(records,match,event.side).find(p=>playerId(p)===event.playerId);
   if(!p)return '球员（名单缺失）';
   const keeper=isGoalkeeper(match,event.side,p),number=matchNumber(match,event.side,p);
+  if(match.tournament===CUSTOM_TOURNAMENT && !match.starters[event.side].includes(playerId(p)) && !number)return p.name;
   return `${number||(keeper?'GK':'待填号码')} ${p.name}${keeper?'(GK)':''}`;
 };
 

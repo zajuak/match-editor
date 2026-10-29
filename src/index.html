@@ -25,7 +25,7 @@
           <div id="custom-match-fields" hidden>
             <div class="two-columns"><div><label for="custom-home-name">主队名称</label><input id="custom-home-name" maxlength="80" placeholder="输入主队名称"></div><div><label for="custom-away-name">客队名称</label><input id="custom-away-name" maxlength="80" placeholder="输入客队名称"></div></div>
             <div class="two-columns"><div><label for="custom-home-starters">主队首发</label><textarea id="custom-home-starters" rows="11" placeholder="1 张三&#10;2 李四"></textarea></div><div><label for="custom-away-starters">客队首发</label><textarea id="custom-away-starters" rows="11" placeholder="1 王五&#10;2 赵六"></textarea></div></div>
-            <p class="hint">每行一名球员，可写“号码 姓名”或只写姓名。应用后，所有输入球员自动成为首发，并用于比赛事件录入。</p>
+            <p class="hint">每行一名首发，可写“号码 姓名”或只写姓名。未列入首发的球员，可在添加事件时直接填写姓名。</p>
             <button id="apply-custom" class="primary">应用球队与首发</button>
           </div>
           <div class="score-summary"><span>自动比分</span><strong id="score">0 : 0</strong></div>
@@ -60,8 +60,9 @@
     <form id="event-form"><div class="dialog-body">
       <div class="two-columns"><div><label for="event-type">事件类型</label><select id="event-type" required></select></div><div><label for="event-time">比赛时间</label><input id="event-time" placeholder="12 / 40+2 / 点" required pattern="(\d{1,3}(\+\d{1,3})?|点)"></div></div>
       <label for="event-side">所属球队</label><select id="event-side" required><option value="home">主队</option><option value="away">客队</option></select>
-      <label for="event-player" id="event-player-label">球员</label><select id="event-player" required></select>
-      <div id="substitution-field" hidden><label for="event-player-in">换上球员</label><select id="event-player-in"></select></div>
+      <div id="roster-event-player"><label for="event-player" id="event-player-label">球员</label><select id="event-player" required></select></div>
+      <div id="custom-event-player" hidden><div class="two-columns"><div><label for="custom-event-name" id="custom-event-label">球员姓名</label><input id="custom-event-name" list="custom-event-options" maxlength="80" placeholder="填写姓名或选择已有球员" autocomplete="off"></div><div><label for="custom-event-number">本场号码（可选）</label><input id="custom-event-number" inputmode="numeric" pattern="\d{1,3}" maxlength="3" placeholder="未填写时沿用已有号码"></div></div><datalist id="custom-event-options"></datalist></div>
+      <div id="substitution-field" hidden><div id="roster-incoming-player"><label for="event-player-in">换上球员</label><select id="event-player-in"></select></div><div id="custom-incoming-player" class="two-columns" hidden><div><label for="custom-event-in-name">换上球员姓名</label><input id="custom-event-in-name" list="custom-event-options" maxlength="80" placeholder="可填写未列入首发的球员" autocomplete="off"></div><div><label for="custom-event-in-number">换上球员号码（可选）</label><input id="custom-event-in-number" inputmode="numeric" pattern="\d{1,3}" maxlength="3" placeholder="未填写时沿用已有号码"></div></div></div>
       <p id="event-hint" class="hint">可以选择报名名单中的所有球员，包括替补。</p><p id="event-error" class="error" role="alert"></p>
     </div><footer class="dialog-footer"><button type="button" class="secondary" data-close>取消</button><button type="submit" class="primary">保存事件</button></footer></form>
   </dialog>

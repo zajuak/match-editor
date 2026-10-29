@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseDelimited,compareTimes,parseBatch,calculateScore,renderPoster,blankMatch,playerLabel,playerId,matchNumber,setMatchNumber,previousNumber,rememberNumber,restoreState,missingNumbers,createPlayerEvents,reconcileOfficialDraft,parseCustomStarters,CUSTOM_TOURNAMENT,isGoalkeeper,setGoalkeeper,missingGoalkeepers,normalizeRosterRecord} from '../src/core.mjs';
+import {parseDelimited,compareTimes,parseBatch,calculateScore,renderPoster,blankMatch,playerLabel,playerId,matchNumber,setMatchNumber,previousNumber,rememberNumber,restoreState,missingNumbers,createPlayerEvents,reconcileOfficialDraft,parseCustomStarters,CUSTOM_TOURNAMENT,isGoalkeeper,setGoalkeeper,missingGoalkeepers,normalizeRosterRecord,createCustomEvents,parseCustomBatch} from '../src/core.mjs';
 import {registrationTableToRecords,loadOfficialRosters,loadOfficialData} from '../src/importers.mjs';
 import {readFile} from 'node:fs/promises';
 const records=[
@@ -281,4 +281,52 @@ test('updated published men roster includes Chenghuan additions and requested sp
   assert.ok(roster.some(p=>p.team==='数学' && p.name==='申宇灏'));assert.ok(!roster.some(p=>p.name==='申宇颢'));
   for(const name of ['法学','外院','信历','经济','生科'])assert.ok(roster.some(p=>p.team===name));
   assert.ok(!roster.some(p=>['法学院','外国语学院','信息管理学院—历史学系联队','经济学院','生命科学学院'].includes(p.team)));
+});
+
+
+function customEventFixture(){
+  const home=parseCustomStarters('张三\n7 李四',CUSTOM_TOURNAMENT,'红队'),away=parseCustomStarters('王五',CUSTOM_TOURNAMENT,'蓝队'),records=[...home,...away];
+  const match={...blankMatch(),tournament:CUSTOM_TOURNAMENT,title:'自定义比赛',home:'红队',away:'蓝队'};
+  for(const [side,players] of [['home',home],['away',away]]){match.starters[side]=players.map(playerId);for(const p of players)setMatchNumber(match,records,side,playerId(p),p.number);setGoalkeeper(match,records,side,playerId(players[0]));}
+  return {match,records};
+}
+
+test('manual custom events add unnamed-in-lineup substitutes without promoting them to starters',()=>{
+  const {match,records}=customEventFixture(),before=JSON.stringify({match,records});
+  const result=createCustomEvents('进球','12','home',[{name:'  替补甲  '}],match,records);result.match.events.push(...result.events);
+  assert.equal(JSON.stringify({match,records}),before);assert.equal(result.records.length,records.length+1);
+  const id=playerId(result.records.at(-1));assert.ok(!result.match.starters.home.includes(id));
+  assert.equal(playerLabel(result.records,result.match,result.events[0]),'替补甲');assert.deepEqual(missingNumbers(result.match,result.records),[]);
+  const svg=renderPoster(result.match,result.records);assert.ok(svg.includes('>替补甲</text>'));assert.ok(!svg.slice(svg.indexOf('>首发阵容</text>')).includes('替补甲'));assert.equal(calculateScore(result.events).home,1);
+  const saved=restoreState(JSON.parse(JSON.stringify({version:2,records:result.records,match:result.match,numberHistory:{}})));
+  assert.equal(playerLabel(saved.records,saved.match,saved.match.events[0]),'替补甲');assert.deepEqual(saved.match.starters,match.starters);
+});
+
+test('custom event names reuse existing players and retain or update per-match numbers',()=>{
+  const {match,records}=customEventFixture(),id=playerId(records[1]);
+  const reused=createCustomEvents('黄牌','15','home',[{name:'李四',number:''}],match,records);
+  assert.equal(reused.records.length,records.length);assert.equal(reused.events[0].playerId,id);assert.equal(matchNumber(reused.match,'home',id),'7');
+  const changed=createCustomEvents('进球','16','home',[{name:'李四',number:'0'}],match,records);
+  assert.equal(changed.events[0].playerId,id);assert.equal(playerLabel(changed.records,changed.match,changed.events[0]),'0 李四');assert.equal(matchNumber(match,'home',id),'7');
+  const otherTeam=createCustomEvents('红牌','20','away',[{name:'李四',number:'7'}],match,records);assert.notEqual(otherTeam.events[0].playerId,id);
+});
+
+test('manual custom substitutions accept a new incoming player and reject failures without state changes',()=>{
+  const {match,records}=customEventFixture(),before=JSON.stringify({match,records});
+  const result=createCustomEvents('换人','30','home',[{name:'李四'},{name:'替补乙',number:'12'}],match,records);
+  assert.deepEqual(result.events.map(e=>e.type),['换下','换上']);assert.deepEqual(result.match.starters,match.starters);
+  assert.equal(playerLabel(result.records,result.match,result.events[1]),'12 替补乙');
+  for(const [type,time,side,entries] of [['换人','30','home',[{name:'替补乙'},{name:'替补乙'}]],['进球','30','home',[{name:'替补乙',number:'7'}]],['进球','30','home',[{name:''}]],['进球','30','home',[{name:'7'}]],['进球','bad','home',[{name:'替补乙'}]],['进球','30','away',[{name:'甲'.repeat(81)}]]])assert.throws(()=>createCustomEvents(type,time,side,entries,match,records));
+  assert.equal(JSON.stringify({match,records}),before);
+  assert.throws(()=>createCustomEvents('进球','12','home',[{name:'新球员'}],readyMatch(),records),/自定义比赛/);
+});
+
+test('custom batch preview resolves known numbers and new names atomically',()=>{
+  const {match,records}=customEventFixture(),before=JSON.stringify({match,records});
+  const result=parseCustomBatch('12,红队,替补甲\n15,红队,12 替补乙\n18,红队,12\n20,红队,7','进球',match,records);
+  assert.deepEqual(result.events.map(e=>playerLabel(result.records,result.match,e)),['替补甲','12 替补乙','12 替补乙','7 李四']);assert.equal(result.records.length,records.length+2);
+  assert.deepEqual(result.match.starters,match.starters);assert.equal(JSON.stringify({match,records}),before);
+  assert.throws(()=>parseCustomBatch('12,红队,新球员\nwrong,红队,其他人','进球',match,records),/第 2 行/);assert.equal(JSON.stringify({match,records}),before);
+  assert.throws(()=>parseCustomBatch('12,红队,99','进球',match,records),/姓名/);
+  const substitution=parseCustomBatch('25,红队,7,新替补','换人',match,records);assert.deepEqual(substitution.events.map(e=>e.type),['换下','换上']);
 });
