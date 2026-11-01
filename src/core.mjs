@@ -256,6 +256,7 @@ export const playerLabel = (records,match,event) => {
   const p=rosterFor(records,match,event.side).find(p=>playerId(p)===event.playerId);
   if(!p)return '球员（名单缺失）';
   const keeper=isGoalkeeper(match,event.side,p),number=matchNumber(match,event.side,p);
+  if(event.type==='换上')return `${p.name}${keeper?'(GK)':''}`;
   if(match.tournament===CUSTOM_TOURNAMENT && !match.starters[event.side].includes(playerId(p)) && !number)return p.name;
   return `${number||(keeper?'GK':'待填号码')} ${p.name}${keeper?'(GK)':''}`;
 };
@@ -283,7 +284,8 @@ export function renderPoster(match,records,icons={}) {
     const heights={home:0,away:0};
     for(const side of ['home','away'])for(const ev of group[side])heights[side]+=wrap(playerLabel(records,match,ev),14).length*23+12;
     const height=Math.max(heights.home,heights.away,38)+20;
-    body.push(`<circle cx="400" cy="${y+13}" r="21" fill="#8c0000"/>`,text(400,y+18,group.time,group.time.length>4?10:13,'white','middle',600));
+    const timeSize=group.time.length>4?14:group.time.length>2?16:18;
+    body.push(`<circle cx="400" cy="${y+13}" r="21" fill="#8c0000"/>`,`<text x="400" y="${y+13}" font-size="${timeSize}" fill="white" text-anchor="middle" dominant-baseline="central" font-weight="700"${group.time.length>3?' textLength="32" lengthAdjust="spacingAndGlyphs"':''}>${e(group.time)}</text>`);
     for(const side of ['home','away']) {
       if(!group[side].length)continue;
       const x=side==='home'?28:444, boxW=328;

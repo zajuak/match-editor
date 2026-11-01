@@ -315,7 +315,7 @@ test('manual custom substitutions accept a new incoming player and reject failur
   const {match,records}=customEventFixture(),before=JSON.stringify({match,records});
   const result=createCustomEvents('换人','30','home',[{name:'李四'},{name:'替补乙',number:'12'}],match,records);
   assert.deepEqual(result.events.map(e=>e.type),['换下','换上']);assert.deepEqual(result.match.starters,match.starters);
-  assert.equal(playerLabel(result.records,result.match,result.events[1]),'12 替补乙');
+  assert.equal(playerLabel(result.records,result.match,result.events[1]),'替补乙');
   for(const [type,time,side,entries] of [['换人','30','home',[{name:'替补乙'},{name:'替补乙'}]],['进球','30','home',[{name:'替补乙',number:'7'}]],['进球','30','home',[{name:''}]],['进球','30','home',[{name:'7'}]],['进球','bad','home',[{name:'替补乙'}]],['进球','30','away',[{name:'甲'.repeat(81)}]]])assert.throws(()=>createCustomEvents(type,time,side,entries,match,records));
   assert.equal(JSON.stringify({match,records}),before);
   assert.throws(()=>createCustomEvents('进球','12','home',[{name:'新球员'}],readyMatch(),records),/自定义比赛/);
@@ -329,4 +329,24 @@ test('custom batch preview resolves known numbers and new names atomically',()=>
   assert.throws(()=>parseCustomBatch('12,红队,新球员\nwrong,红队,其他人','进球',match,records),/第 2 行/);assert.equal(JSON.stringify({match,records}),before);
   assert.throws(()=>parseCustomBatch('12,红队,99','进球',match,records),/姓名/);
   const substitution=parseCustomBatch('25,红队,7,新替补','换人',match,records);assert.deepEqual(substitution.events.map(e=>e.type),['换下','换上']);
+});
+
+
+test('incoming substitution hides its number while retaining player identity and other event labels',()=>{
+  const match=readyMatch(),incoming=createPlayerEvents('换上','30','home',[li],match,records)[0];
+  assert.equal(playerLabel(records,match,incoming),'李四');assert.equal(matchNumber(match,'home',li),'7');
+  for(const type of ['换下','进球','黄牌'])assert.equal(playerLabel(records,match,{...incoming,type}),'7 李四');
+  match.events=[incoming];const svg=renderPoster(match,records);assert.ok(svg.includes('>李四</text>'));assert.ok(!svg.includes('7 李四'));
+  setGoalkeeper(match,records,'home','');setMatchNumber(match,records,'home',li,'0');assert.equal(playerLabel(records,match,incoming),'李四');
+});
+
+test('event times use larger centered text and fit long stoppage times inside the circle',()=>{
+  const match=readyMatch();
+  match.events=['30','40+2','999+999','点'].map(time=>createPlayerEvents('黄牌',time,'home',[li],match,records)[0]);
+  const svg=renderPoster(match,records);
+  for(const [time,size] of [['30',18],['40+2',16],['999+999',14],['点',18]]){
+    const node=svg.match(new RegExp(`<text[^>]*font-size="${size}"[^>]*>${time.replaceAll('+','\\+')}</text>`))?.[0];
+    assert.ok(node,time);assert.ok(node.includes('dominant-baseline="central"'));assert.ok(node.includes('font-weight="700"'));
+    if(time.length>3)assert.ok(node.includes('textLength="32"'));
+  }
 });
