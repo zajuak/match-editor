@@ -57,9 +57,9 @@ export function setMatchNumber(match,records,side,id,value) {
   return normalized;
 }
 export function missingNumbers(match,records) {
+  if(match.lineupsEnabled===false || !match.showLineups)return [];
   return ['home','away'].flatMap(side=>{
-    const used=new Set([...(match.lineupsEnabled!==false && match.showLineups?match.starters[side]:[]),...match.events.filter(ev=>ev.side===side).map(ev=>ev.playerId)]);
-    return rosterFor(records,match,side).filter(p=>used.has(playerId(p)) && !isGoalkeeper(match,side,p) && !matchNumber(match,side,p) && (match.tournament!==CUSTOM_TOURNAMENT || match.starters[side].includes(playerId(p)))).map(p=>`${match[side]} · ${p.name}`);
+    return rosterFor(records,match,side).filter(p=>match.starters[side].includes(playerId(p)) && !isGoalkeeper(match,side,p) && !matchNumber(match,side,p)).map(p=>`${match[side]} · ${p.name}`);
   });
 }
 export const validTime = time => /^(?:\d{1,3}(?:\+\d{1,3})?|点)$/.test(time);
@@ -255,10 +255,7 @@ export function calculateScore(events) {
 export const playerLabel = (records,match,event) => {
   const p=rosterFor(records,match,event.side).find(p=>playerId(p)===event.playerId);
   if(!p)return '球员（名单缺失）';
-  const keeper=isGoalkeeper(match,event.side,p),number=matchNumber(match,event.side,p);
-  if(event.type==='换上')return `${p.name}${keeper?'(GK)':''}`;
-  if(match.tournament===CUSTOM_TOURNAMENT && !match.starters[event.side].includes(playerId(p)) && !number)return p.name;
-  return `${number||(keeper?'GK':'待填号码')} ${p.name}${keeper?'(GK)':''}`;
+  return `${p.name}${isGoalkeeper(match,event.side,p)?'(GK)':''}`;
 };
 
 // The same self-contained SVG drives the live poster and PNG/SVG downloads.

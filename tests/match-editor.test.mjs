@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseDelimited,compareTimes,parseBatch,calculateScore,renderPoster,blankMatch,playerLabel,playerId,matchNumber,setMatchNumber,previousNumber,rememberNumber,restoreState,missingNumbers,createPlayerEvents,reconcileOfficialDraft,parseCustomStarters,CUSTOM_TOURNAMENT,isGoalkeeper,setGoalkeeper,missingGoalkeepers,normalizeRosterRecord,createCustomEvents,parseCustomBatch} from '../src/core.mjs';
+import {TYPES,parseDelimited,compareTimes,parseBatch,calculateScore,renderPoster,blankMatch,playerLabel,playerId,matchNumber,setMatchNumber,previousNumber,rememberNumber,restoreState,missingNumbers,createPlayerEvents,reconcileOfficialDraft,parseCustomStarters,CUSTOM_TOURNAMENT,isGoalkeeper,setGoalkeeper,missingGoalkeepers,normalizeRosterRecord,createCustomEvents,parseCustomBatch} from '../src/core.mjs';
 import {registrationTableToRecords,loadOfficialRosters,loadOfficialData} from '../src/importers.mjs';
 import {readFile} from 'node:fs/promises';
 const records=[
@@ -27,7 +27,7 @@ test('unnumbered goalkeepers can appear in lineups and events while outfield num
   setGoalkeeper(match,records,'home',zhang);setGoalkeeper(match,records,'away',wang);
   setMatchNumber(match,records,'home',zhang,'');setMatchNumber(match,records,'away',wang,'');
   match.events=parseBatch('12,红队,张三','黄牌',match,records);
-  assert.deepEqual(missingNumbers(match,records),[]);assert.equal(playerLabel(records,match,match.events[0]),'GK 张三(GK)');
+  assert.deepEqual(missingNumbers(match,records),[]);assert.equal(playerLabel(records,match,match.events[0]),'张三(GK)');
   setMatchNumber(match,records,'home',li,'');assert.deepEqual(missingNumbers(match,records),['红队 · 李四']);
   setGoalkeeper(match,records,'home',li);assert.deepEqual(missingNumbers(match,records),['红队 · 张三']);
 });
@@ -36,7 +36,7 @@ test('goalkeeper numbers remain optional, unique when supplied, and zero is disp
   const match=readyMatch();match.starters={home:[zhang,li],away:[wang]};setGoalkeeper(match,records,'home',zhang);
   assert.throws(()=>setMatchNumber(match,records,'home',zhang,'7'),/已有球员/);
   setMatchNumber(match,records,'home',zhang,'0');
-  assert.equal(playerLabel(records,match,{side:'home',playerId:zhang}),'0 张三(GK)');
+  assert.equal(playerLabel(records,match,{side:'home',playerId:zhang}),'张三(GK)');
 });
 
 test('poster marks both numbered and unnumbered goalkeepers',()=>{
@@ -140,8 +140,8 @@ test('numbers and history stay isolated between tournaments and teams',()=>{
 test('changing a number keeps events and starters attached to the same player',()=>{
   const match=readyMatch();match.starters.home=[zhang];match.events=parseBatch('12,红队,1','进球',match,records);
   setMatchNumber(match,records,'home',zhang,'9');setMatchNumber(match,records,'home',li,'1');
-  assert.equal(playerLabel(records,match,match.events[0]),'9 张三');assert.deepEqual(match.starters.home,[zhang]);
-  const svg=renderPoster(match,records);assert.ok(svg.includes('9 张三'));assert.ok(svg.includes('>9</text>'));
+  assert.equal(playerLabel(records,match,match.events[0]),'张三');assert.deepEqual(match.starters.home,[zhang]);
+  const svg=renderPoster(match,records);assert.ok(svg.includes('张三'));assert.ok(svg.includes('>9</text>'));
 });
 
 test('batch resolves only current numbers, supports names before assigning numbers, and validates all rows',()=>{
@@ -153,18 +153,18 @@ test('batch resolves only current numbers, supports names before assigning numbe
   assert.deepEqual(createPlayerEvents('换人','40+2','home',[zhang,li],match,records).map(e=>e.type),['换下','换上']);
 });
 
-test('exports identify missing numbers only for visible starters and event participants',()=>{
+test('exports require numbers only for visible outfield starters',()=>{
   const match=readyMatch();match.starters.home=[zhang];setMatchNumber(match,records,'home',zhang,'');
   assert.deepEqual(missingNumbers(match,records),['红队 · 张三']);
   match.showLineups=false;assert.deepEqual(missingNumbers(match,records),[]);
-  match.events=createPlayerEvents('黄牌','12','home',[zhang],match,records);assert.deepEqual(missingNumbers(match,records),['红队 · 张三']);
+  match.events=createPlayerEvents('黄牌','12','home',[zhang],match,records);assert.deepEqual(missingNumbers(match,records),[]);
 });
 
 test('v1 migration preserves old numbers, starters, events and same-name players',()=>{
   const saved={version:1,records:[{tournament:'杯赛',team:'红队',number:'01',name:'张三'},{tournament:'杯赛',team:'红队',number:'7',name:'张三'}],match:{tournament:'杯赛',home:'红队',away:'蓝队',starters:{home:['7'],away:[]},events:[{id:'old-event',time:'12',side:'home',number:'1',type:'进球'}]}};
   const migrated=restoreState(saved),first=migrated.records[0],second=migrated.records[1];
   assert.notEqual(first.id,second.id);assert.deepEqual(migrated.match.starters.home,[second.id]);
-  assert.equal(playerLabel(migrated.records,migrated.match,migrated.match.events[0]),'1 张三');
+  assert.equal(playerLabel(migrated.records,migrated.match,migrated.match.events[0]),'张三');
   assert.equal(previousNumber(migrated.numberHistory,second.id,'next-match'),'7');
 });
 
@@ -235,8 +235,8 @@ test('competition without lineups exports events without starting goalkeepers or
   setMatchNumber(match,records,'home',zhang,'');
   assert.deepEqual(missingGoalkeepers(match,records),[]);assert.deepEqual(missingNumbers(match,records),[]);
   match.events=createPlayerEvents('进球','12','home',[li],match,records);
-  const svg=renderPoster(match,records);assert.ok(!svg.includes('首发阵容'));assert.ok(svg.includes('7 李四'));assert.equal(calculateScore(match.events).home,1);
-  setMatchNumber(match,records,'home',li,'');assert.deepEqual(missingNumbers(match,records),['红队 · 李四']);
+  const svg=renderPoster(match,records);assert.ok(!svg.includes('首发阵容'));assert.ok(svg.includes('>李四</text>'));assert.ok(!svg.includes('7 李四'));assert.equal(calculateScore(match.events).home,1);
+  setMatchNumber(match,records,'home',li,'');assert.deepEqual(missingNumbers(match,records),[]);
 });
 
 for(const [oldName,newName] of [['2026新生杯','2026年新生杯男子足球赛'],['2026-27五人制女足北大杯','2026-27北大杯女子足球赛'],['2026-27女足北大杯','2026-27北大杯女子足球赛']])test(`rename ${oldName} preserves draft relationships and custom titles`,()=>{
@@ -307,7 +307,7 @@ test('custom event names reuse existing players and retain or update per-match n
   const reused=createCustomEvents('黄牌','15','home',[{name:'李四',number:''}],match,records);
   assert.equal(reused.records.length,records.length);assert.equal(reused.events[0].playerId,id);assert.equal(matchNumber(reused.match,'home',id),'7');
   const changed=createCustomEvents('进球','16','home',[{name:'李四',number:'0'}],match,records);
-  assert.equal(changed.events[0].playerId,id);assert.equal(playerLabel(changed.records,changed.match,changed.events[0]),'0 李四');assert.equal(matchNumber(match,'home',id),'7');
+  assert.equal(changed.events[0].playerId,id);assert.equal(playerLabel(changed.records,changed.match,changed.events[0]),'李四');assert.equal(matchNumber(match,'home',id),'7');
   const otherTeam=createCustomEvents('红牌','20','away',[{name:'李四',number:'7'}],match,records);assert.notEqual(otherTeam.events[0].playerId,id);
 });
 
@@ -324,7 +324,7 @@ test('manual custom substitutions accept a new incoming player and reject failur
 test('custom batch preview resolves known numbers and new names atomically',()=>{
   const {match,records}=customEventFixture(),before=JSON.stringify({match,records});
   const result=parseCustomBatch('12,红队,替补甲\n15,红队,12 替补乙\n18,红队,12\n20,红队,7','进球',match,records);
-  assert.deepEqual(result.events.map(e=>playerLabel(result.records,result.match,e)),['替补甲','12 替补乙','12 替补乙','7 李四']);assert.equal(result.records.length,records.length+2);
+  assert.deepEqual(result.events.map(e=>playerLabel(result.records,result.match,e)),['替补甲','替补乙','替补乙','李四']);assert.equal(result.records.length,records.length+2);
   assert.deepEqual(result.match.starters,match.starters);assert.equal(JSON.stringify({match,records}),before);
   assert.throws(()=>parseCustomBatch('12,红队,新球员\nwrong,红队,其他人','进球',match,records),/第 2 行/);assert.equal(JSON.stringify({match,records}),before);
   assert.throws(()=>parseCustomBatch('12,红队,99','进球',match,records),/姓名/);
@@ -332,10 +332,10 @@ test('custom batch preview resolves known numbers and new names atomically',()=>
 });
 
 
-test('incoming substitution hides its number while retaining player identity and other event labels',()=>{
+test('all event types hide numbers while retaining player identity and recorded numbers',()=>{
   const match=readyMatch(),incoming=createPlayerEvents('换上','30','home',[li],match,records)[0];
   assert.equal(playerLabel(records,match,incoming),'李四');assert.equal(matchNumber(match,'home',li),'7');
-  for(const type of ['换下','进球','黄牌'])assert.equal(playerLabel(records,match,{...incoming,type}),'7 李四');
+  for(const type of TYPES)assert.equal(playerLabel(records,match,{...incoming,type}),'李四');
   match.events=[incoming];const svg=renderPoster(match,records);assert.ok(svg.includes('>李四</text>'));assert.ok(!svg.includes('7 李四'));
   setGoalkeeper(match,records,'home','');setMatchNumber(match,records,'home',li,'0');assert.equal(playerLabel(records,match,incoming),'李四');
 });
@@ -365,4 +365,16 @@ test('event names and icons are vertically centered in single and wrapped event 
     const first=Number(labels[0][1]),last=Number(labels.at(-1)[1]);assert.equal((first+last)/2,center);
     assert.equal(first-23/2-Number(box[1]),Number(box[1])+Number(box[2])-last-23/2);
   }
+});
+
+
+test('a numbered goal scorer displays only the name in events and keeps the number in the starting lineup',async()=>{
+  const tournament='2026年新生杯男子足球赛',roster=JSON.parse(await readFile(new URL('../src/data/rosters/tournament-1.json',import.meta.url),'utf8')).map(p=>({...p,tournament}));
+  const player=roster.find(p=>p.team==='元培' && p.name==='马未庚');assert.ok(player);
+  const id=playerId(player),match={...blankMatch(),tournament,home:'元培',away:'工学'};match.starters.home=[id];setMatchNumber(match,roster,'home',id,'1');
+  match.events=createPlayerEvents('进球','1','home',[id],match,roster);
+  const svg=renderPoster(match,roster),events=svg.split('>首发阵容</text>')[0];
+  assert.equal(playerLabel(roster,match,match.events[0]),'马未庚');assert.ok(events.includes('>马未庚</text>'));assert.ok(!svg.includes('1 马未庚'));
+  assert.ok(svg.split('>首发阵容</text>')[1].includes('>1</text>'));assert.equal(matchNumber(match,'home',id),'1');
+  match.showLineups=false;setMatchNumber(match,roster,'home',id,'');assert.deepEqual(missingNumbers(match,roster),[]);
 });
