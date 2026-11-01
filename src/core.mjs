@@ -265,7 +265,7 @@ export const playerLabel = (records,match,event) => {
 export function renderPoster(match,records,icons={}) {
   const e=escapeXML, W=800, score=calculateScore(match.events), ordered=sortedEvents(match.events), groups=[];
   ordered.forEach(event=>{let group=groups.at(-1);if(!group || group.time!==event.time){group={time:event.time,home:[],away:[]};groups.push(group);}group[event.side].push(event);});
-  const text=(x,y,value,size=20,fill='#323745',anchor='start',weight=400)=>`<text x="${x}" y="${y}" font-size="${size}" fill="${fill}" text-anchor="${anchor}" font-weight="${weight}">${e(value)}</text>`;
+  const text=(x,y,value,size=20,fill='#323745',anchor='start',weight=400,centered=false)=>`<text x="${x}" y="${y}" font-size="${size}" fill="${fill}" text-anchor="${anchor}" font-weight="${weight}"${centered?' dominant-baseline="central"':''}>${e(value)}</text>`;
   const wrap=(value,max)=>{const chars=Array.from(value);const lines=[];while(chars.length)lines.push(chars.splice(0,max).join(''));return lines.length?lines:[''];};
   const titleLines=wrap(match.title||match.tournament||'足球比赛赛果',30);
   const titleHeight=42+titleLines.length*28;
@@ -290,13 +290,13 @@ export function renderPoster(match,records,icons={}) {
       if(!group[side].length)continue;
       const x=side==='home'?28:444, boxW=328;
       body.push(`<rect x="${x}" y="${y-8}" width="${boxW}" height="${heights[side]+12}" rx="6" fill="white" stroke="#e1e3e8"/>`);
-      let ey=y+15;
+      let ey=y-8+12+23/2;
       for(const ev of group[side]) {
-        const ix=side==='home'?x+boxW-34:x+12;
-        if(icons[ev.type])body.push(`<image href="${e(icons[ev.type])}" x="${ix}" y="${ey-17}" width="22" height="22"/>`);
-        else body.push(text(ix+11,ey,ev.type,11,'#8c0000','middle'));
-        wrap(playerLabel(records,match,ev),14).forEach((line,i)=>body.push(text(side==='home'?ix-12:ix+34,ey+i*23,line,18,'#414655',side==='home'?'end':'start')));
-        ey+=wrap(playerLabel(records,match,ev),14).length*23+12;
+        const ix=side==='home'?x+boxW-34:x+12,lines=wrap(playerLabel(records,match,ev),14),centerY=ey+(lines.length-1)*23/2;
+        if(icons[ev.type])body.push(`<image href="${e(icons[ev.type])}" x="${ix}" y="${centerY-11}" width="22" height="22"/>`);
+        else body.push(text(ix+11,centerY,ev.type,11,'#8c0000','middle',400,true));
+        lines.forEach((line,i)=>body.push(text(side==='home'?ix-12:ix+34,ey+i*23,line,18,'#414655',side==='home'?'end':'start',400,true)));
+        ey+=lines.length*23+12;
       }
     }
     y+=height;

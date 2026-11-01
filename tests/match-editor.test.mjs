@@ -350,3 +350,19 @@ test('event times use larger centered text and fit long stoppage times inside th
     if(time.length>3)assert.ok(node.includes('textLength="32"'));
   }
 });
+
+test('event names and icons are vertically centered in single and wrapped event cards',()=>{
+  const long={tournament:'杯赛',team:'蓝队',name:'长'.repeat(29),number:''},all=[...records,long],match=readyMatch();
+  match.events=[...createPlayerEvents('换上','30','home',[li],match,all),...createPlayerEvents('换上','30','away',[playerId(long)],match,all)];
+  const svg=renderPoster(match,all,{换上:'test-icon'});
+  for(const [x,iconX,anchor] of [[28,322,'end'],[444,456,'start']]){
+    const box=svg.match(new RegExp(`<rect x="${x}" y="([\\d.]+)" width="328" height="([\\d.]+)"`));
+    assert.ok(box);const center=Number(box[1])+Number(box[2])/2;
+    const image=svg.match(new RegExp(`<image href="test-icon" x="${iconX}" y="([\\d.]+)" width="22" height="22"`));
+    assert.equal(Number(image[1])+11,center);
+    const labels=[...svg.matchAll(new RegExp(`<text x="[\\d.]+" y="([\\d.]+)" font-size="18" fill="#414655" text-anchor="${anchor}"[^>]*>[^<]+</text>`,'g'))];
+    assert.ok(labels.length);assert.ok(labels.every(node=>node[0].includes('dominant-baseline="central"')));
+    const first=Number(labels[0][1]),last=Number(labels.at(-1)[1]);assert.equal((first+last)/2,center);
+    assert.equal(first-23/2-Number(box[1]),Number(box[1])+Number(box[2])-last-23/2);
+  }
+});
