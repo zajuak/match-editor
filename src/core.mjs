@@ -1,6 +1,8 @@
 // Pure data operations shared by the editor and its regression checks.
 export const TYPES = ['进球', '点球', '乌龙', '助攻', '黄牌', '红牌', '两黄', '射失点球', '换下', '换上'];
 export const ICONS = {进球:'G',点球:'PG',乌龙:'icon_w',助攻:'AS',黄牌:'YC',红牌:'RC',两黄:'YYR',射失点球:'PM',换下:'SO',换上:'SI'};
+export const TEAM_LEADER = '__team_leader__';
+export const allowsTeamLeader = type => type==='红牌' || type==='黄牌';
 export const CUSTOM_TOURNAMENT = '__custom__';
 const tournamentNames={'2026新生杯':'2026年新生杯男子足球赛','2026-27五人制女足北大杯':'2026-27北大杯女子足球赛','2026-27女足北大杯':'2026-27北大杯女子足球赛'};
 const teamNames={'法学院':'法学','外国语学院':'外院','信息管理学院—历史学系联队':'信历','经济学院':'经济','生命科学学院':'生科'};
@@ -171,7 +173,7 @@ export function reconcileOfficialDraft(match,numberHistory,records) {
     if(next.starters[side].includes(match.goalkeepers?.[side]))next.goalkeepers[side]=match.goalkeepers[side];
     next.numbers[side]=Object.fromEntries(Object.entries(match.numbers[side]||{}).filter(([id])=>ids.has(id)));
   }
-  next.events=match.events.filter(event=>event.type==='乌龙'?Boolean(next[event.side]):validPlayers[event.side]?.has(event.playerId));
+  next.events=match.events.filter(event=>event.type==='乌龙' || (event.recipient==='leader' && allowsTeamLeader(event.type))?Boolean(next[event.side]):validPlayers[event.side]?.has(event.playerId));
   return {match:next,numberHistory:mergeNumberHistories({},numberHistory,records)};
 }
 export function parseBatch(text,type,match,records) {
@@ -190,6 +192,7 @@ export function parseBatch(text,type,match,records) {
     if(names.length!==(type==='换人'?2:1))throw new Error(`第 ${i+1} 行：${type==='换人'?'换人需要时间、球队、换下球员、换上球员':'需要时间、球队、球员'}。`);
     const roster=rosterFor(records,match,side);
     const players=names.map(name=>{
+      if(name==='领队' && allowsTeamLeader(type))return TEAM_LEADER;
       const hits=roster.filter(p=>p.name===name || (matchNumber(match,side,p) && (matchNumber(match,side,p)===name || `${matchNumber(match,side,p)} ${p.name}`===name)));
       if(hits.length!==1)throw new Error(`第 ${i+1} 行：“${name}”${hits.length?'重名，请使用号码':'不在该队名单中'}。`);
       return playerId(hits[0]);
@@ -204,6 +207,7 @@ export function createPlayerEvents(type,time,side,ids,match,records) {
   if(!TYPES.includes(type) && type!=='换人')throw new Error('请选择事件类型。');
   if(!['home','away'].includes(side) || !match[side])throw new Error('请选择球队。');
   if(type==='乌龙')return [{id:crypto.randomUUID(),time,side,type,teamRole:'scoring'}];
+  if(allowsTeamLeader(type) && ids.length===1 && ids[0]===TEAM_LEADER)return [{id:crypto.randomUUID(),time,side,type,recipient:'leader'}];
   if(ids.length!==(type==='换人'?2:1) || ids.some(id=>!rosterFor(records,match,side).some(p=>playerId(p)===id)))throw new Error('请选择有效球员。');
   if(type==='换人' && ids[0]===ids[1])throw new Error('换上与换下球员不能相同。');
   return ids.map((id,j)=>({id:crypto.randomUUID(),time,side,playerId:id,type:type==='换人'?(j?'换上':'换下'):type}));
@@ -218,6 +222,7 @@ export function createCustomEvents(type,time,side,entries,match,records) {
   const nextMatch=structuredClone(match),nextRecords=[...records];
   const ids=entries.map(entry=>{
     const name=String(entry.name??'').trim();
+    if(name==='领队' && allowsTeamLeader(type))return TEAM_LEADER;
     if(!name || /^\d+$/.test(name) || /[\r\n\t]/.test(name))throw new Error('请填写有效的球员姓名。');
     let player=rosterFor(nextRecords,nextMatch,side).find(p=>p.name===name);
     if(!player){player={tournament:CUSTOM_TOURNAMENT,team:match[side],name,number:''};nextRecords.push(player);}
@@ -264,6 +269,7 @@ export function calculateScore(events) {
 }
 export const playerLabel = (records,match,event) => {
   if(event.type==='乌龙')return 'OG';
+  if(event.recipient==='leader' && allowsTeamLeader(event.type))return '领队';
   const p=rosterFor(records,match,event.side).find(p=>playerId(p)===event.playerId);
   if(!p)return '球员（名单缺失）';
   return `${p.name}${isGoalkeeper(match,event.side,p)?'(GK)':''}`;

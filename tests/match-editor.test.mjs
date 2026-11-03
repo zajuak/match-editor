@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {TYPES,parseDelimited,compareTimes,parseBatch,calculateScore,renderPoster,blankMatch,playerLabel,playerId,matchNumber,setMatchNumber,previousNumber,rememberNumber,restoreState,missingNumbers,createPlayerEvents,reconcileOfficialDraft,parseCustomStarters,CUSTOM_TOURNAMENT,isGoalkeeper,setGoalkeeper,missingGoalkeepers,normalizeRosterRecord,createCustomEvents,parseCustomBatch} from '../src/core.mjs';
+import {TEAM_LEADER,TYPES,parseDelimited,compareTimes,parseBatch,calculateScore,renderPoster,blankMatch,playerLabel,playerId,matchNumber,setMatchNumber,previousNumber,rememberNumber,restoreState,missingNumbers,createPlayerEvents,reconcileOfficialDraft,parseCustomStarters,CUSTOM_TOURNAMENT,isGoalkeeper,setGoalkeeper,missingGoalkeepers,normalizeRosterRecord,createCustomEvents,parseCustomBatch} from '../src/core.mjs';
 import {registrationTableToRecords,loadOfficialRosters,loadOfficialData} from '../src/importers.mjs';
 import {readFile} from 'node:fs/promises';
 const records=[
@@ -441,4 +441,42 @@ test('new own goals score for the selected team and legacy drafts migrate withou
   assert.deepEqual(calculateScore(migrated.match.events),oldScore);
   const again=restoreState({version:2,...migrated});assert.equal(again.match.events[0].side,'away');
   assert.deepEqual(calculateScore(again.match.events),oldScore);assert.equal(old.side,'home');
+});
+
+
+test('red and yellow cards can target a team leader without a roster player or number',()=>{
+  const match=readyMatch(),before=JSON.stringify(match);
+  for(const type of ['红牌','黄牌'])for(const side of ['home','away']){
+    const [event]=createPlayerEvents(type,'12',side,[TEAM_LEADER],match,[]);
+    assert.equal(event.recipient,'leader');assert.ok(!('playerId' in event));
+    assert.equal(playerLabel([],match,event),'领队');
+    assert.deepEqual(calculateScore([event]),{home:0,away:0,shootout:{home:0,away:0}});
+    const svg=renderPoster({...match,events:[event]},[],{[type]:'card-icon'});
+    assert.ok(svg.includes('>领队</text>'));assert.ok(svg.includes('card-icon'));assert.ok(!svg.includes('名单缺失'));
+  }
+  for(const type of TYPES.filter(t=>!['红牌','黄牌','乌龙'].includes(t)))assert.throws(()=>createPlayerEvents(type,'12','home',[TEAM_LEADER],match,records),/有效球员/);
+  assert.equal(JSON.stringify(match),before);
+});
+
+test('official and custom card batches support team leaders without creating player records',()=>{
+  const match=readyMatch();
+  for(const type of ['红牌','黄牌']){
+    const events=parseBatch('12,红队,领队\n13,蓝队,王五',type,match,records);
+    assert.equal(events[0].recipient,'leader');assert.equal(events[1].playerId,wang);
+    const custom={...match,tournament:CUSTOM_TOURNAMENT};
+    const direct=createCustomEvents(type,'12','home',[{name:'领队',number:'99'}],custom,[]);
+    assert.deepEqual(direct.records,[]);assert.deepEqual(direct.match,custom);assert.equal(direct.events[0].recipient,'leader');
+    const batch=parseCustomBatch('12,红队,领队\n13,蓝队,领队',type,custom,[]);
+    assert.deepEqual(batch.records,[]);assert.ok(batch.events.every(e=>e.recipient==='leader'));
+  }
+  assert.throws(()=>parseBatch('12,红队,领队','进球',match,records),/不在该队名单/);
+});
+
+test('leader cards persist across reload and official roster refresh but not removal of their team',()=>{
+  const match=readyMatch();match.events=[...createPlayerEvents('黄牌','12','home',[TEAM_LEADER],match,records),...createPlayerEvents('红牌','15','away',[TEAM_LEADER],match,records)];
+  const saved=restoreState(JSON.parse(JSON.stringify({version:2,records,match,numberHistory:{}})));
+  const next=reconcileOfficialDraft(saved.match,saved.numberHistory,records).match;
+  assert.equal(next.events.length,2);assert.ok(next.events.every(e=>playerLabel(records,next,e)==='领队'));
+  next.away='已删除球队';const removed=reconcileOfficialDraft(next,{},records).match;
+  assert.equal(removed.events.length,1);assert.equal(removed.events[0].side,'home');
 });
