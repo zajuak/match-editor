@@ -170,7 +170,7 @@ export function reconcileOfficialDraft(match,numberHistory,records) {
     if(next.starters[side].includes(match.goalkeepers?.[side]))next.goalkeepers[side]=match.goalkeepers[side];
     next.numbers[side]=Object.fromEntries(Object.entries(match.numbers[side]||{}).filter(([id])=>ids.has(id)));
   }
-  next.events=match.events.filter(event=>validPlayers[event.side]?.has(event.playerId));
+  next.events=match.events.filter(event=>event.type==='乌龙'?Boolean(next[event.side]):validPlayers[event.side]?.has(event.playerId));
   return {match:next,numberHistory:mergeNumberHistories({},numberHistory,records)};
 }
 export function parseBatch(text,type,match,records) {
@@ -182,6 +182,10 @@ export function parseBatch(text,type,match,records) {
     if(!validTime(time))throw new Error(`第 ${i+1} 行：时间应为 12、40+2 或“点”。`);
     const side=team===match.home?'home':team===match.away?'away':null;
     if(!side || !match.home || !match.away)throw new Error(`第 ${i+1} 行：队伍必须是当前主队或客队。`);
+    if(type==='乌龙'){
+      if(names.length)throw new Error(`第 ${i+1} 行：乌龙球只需时间、球队。`);
+      events.push(...createPlayerEvents(type,time,side,[],match,records));return;
+    }
     if(names.length!==(type==='换人'?2:1))throw new Error(`第 ${i+1} 行：${type==='换人'?'换人需要时间、球队、换下球员、换上球员':'需要时间、球队、球员'}。`);
     const roster=rosterFor(records,match,side);
     const players=names.map(name=>{
@@ -198,6 +202,7 @@ export function createPlayerEvents(type,time,side,ids,match,records) {
   if(!validTime(time))throw new Error('时间应为 12、40+2 或“点”。');
   if(!TYPES.includes(type) && type!=='换人')throw new Error('请选择事件类型。');
   if(!['home','away'].includes(side) || !match[side])throw new Error('请选择球队。');
+  if(type==='乌龙')return [{id:crypto.randomUUID(),time,side,type}];
   if(ids.length!==(type==='换人'?2:1) || ids.some(id=>!rosterFor(records,match,side).some(p=>playerId(p)===id)))throw new Error('请选择有效球员。');
   if(type==='换人' && ids[0]===ids[1])throw new Error('换上与换下球员不能相同。');
   return ids.map((id,j)=>({id:crypto.randomUUID(),time,side,playerId:id,type:type==='换人'?(j?'换上':'换下'):type}));
@@ -207,6 +212,7 @@ export function createCustomEvents(type,time,side,entries,match,records) {
   if(!validTime(time))throw new Error('时间应为 12、40+2 或“点”。');
   if(!TYPES.includes(type) && type!=='换人')throw new Error('请选择事件类型。');
   if(!['home','away'].includes(side) || !match[side])throw new Error('请选择球队。');
+  if(type==='乌龙')return {records:[...records],match:structuredClone(match),events:createPlayerEvents(type,time,side,[],match,records)};
   if(entries.length!==(type==='换人'?2:1))throw new Error('请填写事件球员姓名。');
   const nextMatch=structuredClone(match),nextRecords=[...records];
   const ids=entries.map(entry=>{
@@ -223,6 +229,7 @@ export function createCustomEvents(type,time,side,entries,match,records) {
   return {records:nextRecords,match:nextMatch,events};
 }
 export function parseCustomBatch(text,type,match,records) {
+  if(type==='乌龙')return {records:[...records],match:structuredClone(match),events:parseBatch(text,type,match,records)};
   const rows=parseDelimited(text.includes(',')?text:text.replaceAll('，',','));
   if(!rows.length)throw new Error('请输入事件。');
   let nextMatch=match,nextRecords=records;const events=[];
@@ -253,6 +260,7 @@ export function calculateScore(events) {
   return score;
 }
 export const playerLabel = (records,match,event) => {
+  if(event.type==='乌龙')return 'OG';
   const p=rosterFor(records,match,event.side).find(p=>playerId(p)===event.playerId);
   if(!p)return '球员（名单缺失）';
   return `${p.name}${isGoalkeeper(match,event.side,p)?'(GK)':''}`;

@@ -335,7 +335,7 @@ test('custom batch preview resolves known numbers and new names atomically',()=>
 test('all event types hide numbers while retaining player identity and recorded numbers',()=>{
   const match=readyMatch(),incoming=createPlayerEvents('换上','30','home',[li],match,records)[0];
   assert.equal(playerLabel(records,match,incoming),'李四');assert.equal(matchNumber(match,'home',li),'7');
-  for(const type of TYPES)assert.equal(playerLabel(records,match,{...incoming,type}),'李四');
+  for(const type of TYPES)assert.equal(playerLabel(records,match,{...incoming,type}),type==='乌龙'?'OG':'李四');
   match.events=[incoming];const svg=renderPoster(match,records);assert.ok(svg.includes('>李四</text>'));assert.ok(!svg.includes('7 李四'));
   setGoalkeeper(match,records,'home','');setMatchNumber(match,records,'home',li,'0');assert.equal(playerLabel(records,match,incoming),'李四');
 });
@@ -377,4 +377,37 @@ test('a numbered goal scorer displays only the name in events and keeps the numb
   assert.equal(playerLabel(roster,match,match.events[0]),'马未庚');assert.ok(events.includes('>马未庚</text>'));assert.ok(!svg.includes('1 马未庚'));
   assert.ok(svg.split('>首发阵容</text>')[1].includes('>1</text>'));assert.equal(matchNumber(match,'home',id),'1');
   match.showLineups=false;setMatchNumber(match,roster,'home',id,'');assert.deepEqual(missingNumbers(match,roster),[]);
+});
+
+
+test('own goals need only time and team and score for the opposition',()=>{
+  const match=readyMatch();
+  match.events=[...createPlayerEvents('乌龙','12','home',[],match,[]),...createPlayerEvents('乌龙','40+2','away',[],match,[])];
+  assert.ok(match.events.every(e=>!('playerId' in e)));
+  assert.deepEqual(calculateScore(match.events),{home:1,away:1,shootout:{home:0,away:0}});
+  assert.equal(playerLabel([],match,match.events[0]),'OG');
+  const svg=renderPoster(match,[]);assert.ok(svg.includes('>OG</text>'));assert.ok(!svg.includes('名单缺失'));
+  assert.throws(()=>createPlayerEvents('乌龙','abc','home',[],match,[]),/时间/);
+  assert.throws(()=>createPlayerEvents('乌龙','12','other',[],match,[]),/球队/);
+  assert.throws(()=>createPlayerEvents('黄牌','12','home',[],match,records),/有效球员/);
+});
+
+test('official and custom own-goal batches use two columns and add no players or numbers',()=>{
+  const match=readyMatch(),input='12,红队\n40+2,蓝队';
+  assert.equal(parseBatch(input,'乌龙',match,[]).length,2);
+  assert.throws(()=>parseBatch('12,红队,张三','乌龙',match,records),/只需时间、球队/);
+  assert.throws(()=>parseBatch('12,其他队','乌龙',match,records),/当前主队或客队/);
+  const custom={...match,tournament:CUSTOM_TOURNAMENT},before=JSON.stringify(custom);
+  const result=parseCustomBatch(input,'乌龙',custom,[]);
+  assert.deepEqual(result.records,[]);assert.deepEqual(result.match,custom);assert.equal(result.events.length,2);
+  const direct=createCustomEvents('乌龙','15','home',[],custom,[]);assert.equal(direct.events.length,1);assert.deepEqual(direct.records,[]);
+  assert.equal(JSON.stringify(custom),before);
+});
+
+test('own goals survive saved drafts and roster updates without a player association',()=>{
+  const match=readyMatch();match.events=[...createPlayerEvents('乌龙','12','home',[],match,records),{id:'legacy-own-goal',time:'15',side:'away',type:'乌龙',playerId:'removed-player'}];
+  const saved=restoreState(JSON.parse(JSON.stringify({version:2,records,match,numberHistory:{}})));
+  const next=reconcileOfficialDraft(saved.match,saved.numberHistory,records).match;
+  assert.equal(next.events.length,2);assert.ok(next.events.every(e=>playerLabel(records,next,e)==='OG'));
+  next.away='已删除球队';assert.equal(reconcileOfficialDraft(next,{},records).match.events.length,1);
 });

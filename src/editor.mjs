@@ -67,7 +67,7 @@ function renderLineup(){
 }
 function renderEvents(){
   $('event-count').textContent=`${match.events.length} 个事件`;
-  $('events-list').innerHTML=match.events.length?sortedEvents(match.events).map(event=>`<article class="event-item" draggable="true" data-id="${esc(event.id)}"><div class="event-top"><span class="event-time">${esc(event.time)}${event.time==='点'?'':"′"}</span><div class="event-actions"><button data-action="up" aria-label="上移事件">↑</button><button data-action="down" aria-label="下移事件">↓</button><button data-action="edit">编辑</button><button data-action="delete">删除</button></div></div><div class="event-details"><img src="./SMC_files/${ICONS[event.type]}.png" alt=""><span>${esc(event.type)} · ${esc(playerLabel(records,match,event))}</span><small>${esc(match[event.side])}</small></div></article>`).join(''):'<div class="empty">暂无比赛事件<br>从名单选择球员，记录进球、换人和判罚。</div>';
+  $('events-list').innerHTML=match.events.length?sortedEvents(match.events).map(event=>`<article class="event-item" draggable="true" data-id="${esc(event.id)}"><div class="event-top"><span class="event-time">${esc(event.time)}${event.time==='点'?'':"′"}</span><div class="event-actions"><button data-action="up" aria-label="上移事件">↑</button><button data-action="down" aria-label="下移事件">↓</button><button data-action="edit">编辑</button><button data-action="delete">删除</button></div></div><div class="event-details"><img src="./SMC_files/${ICONS[event.type]}.png" alt=""><span>${event.type==='乌龙'?'乌龙球':`${esc(event.type)} · ${esc(playerLabel(records,match,event))}`}</span><small>${esc(match[event.side])}</small></div></article>`).join(''):'<div class="empty">暂无比赛事件<br>从名单选择球员，记录进球、换人和判罚。</div>';
 }
 function render(){
   const score=calculateScore(match.events);$('score').textContent=`${score.home} : ${score.away}`;
@@ -164,23 +164,23 @@ function fillPlayers(selected='',incoming=''){
   updateEventFields();
 }
 function updateEventFields(){
-  const substitution=$('event-type').value==='换人',custom=isCustom();
-  $('roster-event-player').hidden=custom;$('custom-event-player').hidden=!custom;
-  $('event-player').required=!custom;$('event-player').disabled=custom;$('custom-event-name').required=custom;
+  const substitution=$('event-type').value==='换人',ownGoal=$('event-type').value==='乌龙',custom=isCustom();
+  $('roster-event-player').hidden=custom || ownGoal;$('custom-event-player').hidden=!custom || ownGoal;
+  $('event-player').required=!custom && !ownGoal;$('event-player').disabled=custom || ownGoal;$('custom-event-name').required=custom && !ownGoal;
   $('substitution-field').hidden=!substitution;$('roster-incoming-player').hidden=custom;$('custom-incoming-player').hidden=!custom;
   $('event-player-in').required=substitution && !custom;$('event-player-in').disabled=custom || !substitution;
   $('custom-event-in-name').required=substitution && custom;
-  $('custom-event-name').disabled=!custom;$('custom-event-number').disabled=!custom;
+  $('custom-event-name').disabled=!custom || ownGoal;$('custom-event-number').disabled=!custom || ownGoal;
   $('custom-event-in-name').disabled=!custom || !substitution;$('custom-event-in-number').disabled=!custom || !substitution;
   $('event-player-label').textContent=substitution?'换下球员':'球员';$('custom-event-label').textContent=substitution?'换下球员姓名':'球员姓名';
   const nameHint=custom?'可填写未列入首发的球员姓名，也可选择已有球员；非首发球员号码可留空。':'可以选择报名名单中的所有球员，包括替补。';
-  $('event-hint').textContent=nameHint+($('event-type').value==='乌龙'?'选择造成乌龙的球员及其所属队伍，分数会自动计入对方球队。':'');
+  $('event-hint').textContent=ownGoal?'选择造成乌龙的球队，分数会自动计入对方球队，无需指定球员。':nameHint;
 }
 for(const [nameId,numberId] of [['custom-event-name','custom-event-number'],['custom-event-in-name','custom-event-in-number']])$(nameId).addEventListener('input',()=>{
   const player=rosterFor(records,match,$('event-side').value).find(p=>p.name===$(nameId).value.trim());$(numberId).value=player?matchNumber(match,$('event-side').value,player):'';
 });
 function rememberEventNumbers(events){
-  for(const event of events){const number=matchNumber(match,event.side,event.playerId);if(number)numberHistory=rememberNumber(numberHistory,event.playerId,match.id,number);}
+  for(const event of events){if(event.type==='乌龙' || !event.playerId)continue;const number=matchNumber(match,event.side,event.playerId);if(number)numberHistory=rememberNumber(numberHistory,event.playerId,match.id,number);}
 }
 function openEvent(event=null){
   if(!requireTeams())return;editingId=event?.id||null;$('event-dialog-title').textContent=event?'编辑事件':'添加事件';$('event-type').value=event?.type||'进球';$('event-time').value=event?.time||'';
@@ -193,7 +193,8 @@ $('event-form').addEventListener('submit',event=>{
   try{
     const index=editingId?match.events.findIndex(e=>e.id===editingId):-1;if(editingId && index<0)throw new Error('原事件已不存在。');
     let events;
-    if(isCustom()){
+    if(type==='乌龙')events=createPlayerEvents(type,time,side,[],match,records);
+    else if(isCustom()){
       const entries=[{name:$('custom-event-name').value,number:$('custom-event-number').value},...(type==='换人'?[{name:$('custom-event-in-name').value,number:$('custom-event-in-number').value}]:[])];
       const result=createCustomEvents(type,time,side,entries,match,records);events=result.events;records=result.records;match=result.match;
     }else events=createPlayerEvents(type,time,side,[$('event-player').value,...(type==='换人'?[$('event-player-in').value]:[])],match,records);
@@ -219,9 +220,15 @@ $('events-list').addEventListener('drop',event=>{event.preventDefault();const ta
 $('events-list').addEventListener('dragend',()=>{draggedId=null;document.querySelectorAll('.dragging').forEach(el=>el.classList.remove('dragging'));});
 $('batch-events').addEventListener('click',()=>{
   if(!requireTeams())return;pendingEvents=null;pendingCustom=null;$('batch-input').value='';$('batch-preview').textContent='预览通过后可一次性添加。';$('batch-preview').classList.remove('error');$('confirm-batch').disabled=true;
-  $('batch-help').textContent=isCustom()?'时间,球队,姓名或“号码 姓名”；可填写未列入首发的球员。换人使用：时间,球队,换下球员,换上球员。':'时间,球队,球员号码或姓名；换人使用：时间,球队,换下球员,换上球员。重名时使用号码。';
+  updateBatchHelp();
   $('batch-dialog').showModal();
 });
+function updateBatchHelp(){
+  const ownGoal=$('batch-type').value==='乌龙';
+  $('batch-help').textContent=ownGoal?'乌龙球格式：时间,造成乌龙的球队；无需填写球员，分数计入对方。':isCustom()?'时间,球队,姓名或“号码 姓名”；可填写未列入首发的球员。换人使用：时间,球队,换下球员,换上球员。':'时间,球队,球员号码或姓名；换人使用：时间,球队,换下球员,换上球员。重名时使用号码。';
+  $('batch-input').placeholder=ownGoal?`12,${match.home}\n40+2,${match.away}`:'12,信科,7\n40+2,物院,10';
+}
+$('batch-type').addEventListener('change',updateBatchHelp);
 for(const id of ['batch-type','batch-input'])$(id).addEventListener(id==='batch-type'?'change':'input',()=>{pendingEvents=null;pendingCustom=null;$('confirm-batch').disabled=true;$('batch-preview').textContent='内容已更新，请重新预览。';});
 $('preview-batch').addEventListener('click',()=>{
   $('batch-preview').classList.remove('error');
