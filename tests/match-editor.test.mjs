@@ -411,3 +411,20 @@ test('own goals survive saved drafts and roster updates without a player associa
   assert.equal(next.events.length,2);assert.ok(next.events.every(e=>playerLabel(records,next,e)==='OG'));
   next.away='已删除球队';assert.equal(reconcileOfficialDraft(next,{},records).match.events.length,1);
 });
+
+
+test('own goals render on the scoring side while other events stay on the player team side',()=>{
+  const match=readyMatch(),icons={乌龙:'own-goal-icon',进球:'goal-icon'};
+  match.showLineups=false;
+  for(const [side,x] of [['home',456],['away',322]]){
+    match.events=createPlayerEvents('乌龙','12',side,[],match,records);
+    const svg=renderPoster(match,records,icons);
+    assert.ok(svg.includes(`href="own-goal-icon" x="${x}"`));
+    assert.equal(match.events[0].side,side);
+    const score=calculateScore(match.events);assert.equal(score[side==='home'?'away':'home'],1);
+  }
+  match.events=[...createPlayerEvents('乌龙','12','home',[],match,records),...createPlayerEvents('进球','12','home',[zhang],match,records)];
+  const svg=renderPoster(match,records,icons);
+  assert.ok(svg.includes('href="own-goal-icon" x="456"'));assert.ok(svg.includes('href="goal-icon" x="322"'));
+  assert.equal((svg.match(/r="21"/g)||[]).length,1);
+});

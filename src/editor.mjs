@@ -174,7 +174,7 @@ function updateEventFields(){
   $('custom-event-in-name').disabled=!custom || !substitution;$('custom-event-in-number').disabled=!custom || !substitution;
   $('event-player-label').textContent=substitution?'换下球员':'球员';$('custom-event-label').textContent=substitution?'换下球员姓名':'球员姓名';
   const nameHint=custom?'可填写未列入首发的球员姓名，也可选择已有球员；非首发球员号码可留空。':'可以选择报名名单中的所有球员，包括替补。';
-  $('event-hint').textContent=ownGoal?'选择造成乌龙的球队，分数会自动计入对方球队，无需指定球员。':nameHint;
+  $('event-hint').textContent=ownGoal?'选择造成乌龙的球队，分数会自动计入对方球队，OG 显示在对方一侧，无需指定球员。':nameHint;
 }
 for(const [nameId,numberId] of [['custom-event-name','custom-event-number'],['custom-event-in-name','custom-event-in-number']])$(nameId).addEventListener('input',()=>{
   const player=rosterFor(records,match,$('event-side').value).find(p=>p.name===$(nameId).value.trim());$(numberId).value=player?matchNumber(match,$('event-side').value,player):'';

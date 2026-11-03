@@ -269,7 +269,7 @@ export const playerLabel = (records,match,event) => {
 // The same self-contained SVG drives the live poster and PNG/SVG downloads.
 export function renderPoster(match,records,icons={}) {
   const e=escapeXML, W=800, score=calculateScore(match.events), ordered=sortedEvents(match.events), groups=[];
-  ordered.forEach(event=>{let group=groups.at(-1);if(!group || group.time!==event.time){group={time:event.time,home:[],away:[]};groups.push(group);}group[event.side].push(event);});
+  ordered.forEach(event=>{let group=groups.at(-1);if(!group || group.time!==event.time){group={time:event.time,home:[],away:[]};groups.push(group);}const side=event.type==='乌龙'?(event.side==='home'?'away':'home'):event.side;group[side].push(event);});
   const text=(x,y,value,size=20,fill='#323745',anchor='start',weight=400,centered=false)=>`<text x="${x}" y="${y}" font-size="${size}" fill="${fill}" text-anchor="${anchor}" font-weight="${weight}"${centered?' dominant-baseline="central"':''}>${e(value)}</text>`;
   const wrap=(value,max)=>{const chars=Array.from(value);const lines=[];while(chars.length)lines.push(chars.splice(0,max).join(''));return lines.length?lines:[''];};
   const titleLines=wrap(match.title||match.tournament||'足球比赛赛果',30);
