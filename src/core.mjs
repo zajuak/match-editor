@@ -154,6 +154,7 @@ export function restoreState(saved) {
       match.events=match.events.map(ev=>ev.side===side?{...ev,playerId:find(ev.number)?.id}:ev);
     }
   }
+  match.events=match.events.map(event=>event.type==='乌龙' && event.teamRole!=='scoring'?{...event,side:scoringSide(event),teamRole:'scoring'}:event);
   return {records,match,numberHistory};
 }
 export const rosterFor = (records,match,side) => records.filter(r=>r.tournament===match.tournament && r.team===match[side]);
@@ -202,7 +203,7 @@ export function createPlayerEvents(type,time,side,ids,match,records) {
   if(!validTime(time))throw new Error('时间应为 12、40+2 或“点”。');
   if(!TYPES.includes(type) && type!=='换人')throw new Error('请选择事件类型。');
   if(!['home','away'].includes(side) || !match[side])throw new Error('请选择球队。');
-  if(type==='乌龙')return [{id:crypto.randomUUID(),time,side,type}];
+  if(type==='乌龙')return [{id:crypto.randomUUID(),time,side,type,teamRole:'scoring'}];
   if(ids.length!==(type==='换人'?2:1) || ids.some(id=>!rosterFor(records,match,side).some(p=>playerId(p)===id)))throw new Error('请选择有效球员。');
   if(type==='换人' && ids[0]===ids[1])throw new Error('换上与换下球员不能相同。');
   return ids.map((id,j)=>({id:crypto.randomUUID(),time,side,playerId:id,type:type==='换人'?(j?'换上':'换下'):type}));
@@ -250,11 +251,13 @@ export function parseCustomBatch(text,type,match,records) {
   });
   return {records:nextRecords,match:nextMatch,events};
 }
+// Older drafts store the team that conceded an own goal; new events store the scoring team.
+const scoringSide=event=>event.type==='乌龙' && event.teamRole!=='scoring'?(event.side==='home'?'away':'home'):event.side;
 export function calculateScore(events) {
   const score={home:0,away:0,shootout:{home:0,away:0}};
   for(const e of events) {
     if(!['进球','点球','乌龙'].includes(e.type))continue;
-    const side=e.type==='乌龙'?(e.side==='home'?'away':'home'):e.side;
+    const side=scoringSide(e);
     if(e.time==='点')score.shootout[side]++;else score[side]++;
   }
   return score;
@@ -269,7 +272,7 @@ export const playerLabel = (records,match,event) => {
 // The same self-contained SVG drives the live poster and PNG/SVG downloads.
 export function renderPoster(match,records,icons={}) {
   const e=escapeXML, W=800, score=calculateScore(match.events), ordered=sortedEvents(match.events), groups=[];
-  ordered.forEach(event=>{let group=groups.at(-1);if(!group || group.time!==event.time){group={time:event.time,home:[],away:[]};groups.push(group);}const side=event.type==='乌龙'?(event.side==='home'?'away':'home'):event.side;group[side].push(event);});
+  ordered.forEach(event=>{let group=groups.at(-1);if(!group || group.time!==event.time){group={time:event.time,home:[],away:[]};groups.push(group);}const side=scoringSide(event);group[side].push(event);});
   const text=(x,y,value,size=20,fill='#323745',anchor='start',weight=400,centered=false)=>`<text x="${x}" y="${y}" font-size="${size}" fill="${fill}" text-anchor="${anchor}" font-weight="${weight}"${centered?' dominant-baseline="central"':''}>${e(value)}</text>`;
   const wrap=(value,max)=>{const chars=Array.from(value);const lines=[];while(chars.length)lines.push(chars.splice(0,max).join(''));return lines.length?lines:[''];};
   const titleLines=wrap(match.title||match.tournament||'足球比赛赛果',30);

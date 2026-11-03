@@ -380,7 +380,7 @@ test('a numbered goal scorer displays only the name in events and keeps the numb
 });
 
 
-test('own goals need only time and team and score for the opposition',()=>{
+test('own goals need only time and the scoring team',()=>{
   const match=readyMatch();
   match.events=[...createPlayerEvents('乌龙','12','home',[],match,[]),...createPlayerEvents('乌龙','40+2','away',[],match,[])];
   assert.ok(match.events.every(e=>!('playerId' in e)));
@@ -405,7 +405,7 @@ test('official and custom own-goal batches use two columns and add no players or
 });
 
 test('own goals survive saved drafts and roster updates without a player association',()=>{
-  const match=readyMatch();match.events=[...createPlayerEvents('乌龙','12','home',[],match,records),{id:'legacy-own-goal',time:'15',side:'away',type:'乌龙',playerId:'removed-player'}];
+  const match=readyMatch();match.events=[...createPlayerEvents('乌龙','12','home',[],match,records),{id:'legacy-own-goal',time:'15',side:'home',type:'乌龙',playerId:'removed-player'}];
   const saved=restoreState(JSON.parse(JSON.stringify({version:2,records,match,numberHistory:{}})));
   const next=reconcileOfficialDraft(saved.match,saved.numberHistory,records).match;
   assert.equal(next.events.length,2);assert.ok(next.events.every(e=>playerLabel(records,next,e)==='OG'));
@@ -416,15 +416,29 @@ test('own goals survive saved drafts and roster updates without a player associa
 test('own goals render on the scoring side while other events stay on the player team side',()=>{
   const match=readyMatch(),icons={乌龙:'own-goal-icon',进球:'goal-icon'};
   match.showLineups=false;
-  for(const [side,x] of [['home',456],['away',322]]){
+  for(const [side,x] of [['home',322],['away',456]]){
     match.events=createPlayerEvents('乌龙','12',side,[],match,records);
     const svg=renderPoster(match,records,icons);
     assert.ok(svg.includes(`href="own-goal-icon" x="${x}"`));
     assert.equal(match.events[0].side,side);
-    const score=calculateScore(match.events);assert.equal(score[side==='home'?'away':'home'],1);
+    const score=calculateScore(match.events);assert.equal(score[side],1);
   }
   match.events=[...createPlayerEvents('乌龙','12','home',[],match,records),...createPlayerEvents('进球','12','home',[zhang],match,records)];
   const svg=renderPoster(match,records,icons);
-  assert.ok(svg.includes('href="own-goal-icon" x="456"'));assert.ok(svg.includes('href="goal-icon" x="322"'));
+  assert.ok(svg.includes('href="own-goal-icon" x="322"'));assert.ok(svg.includes('href="goal-icon" x="322"'));
   assert.equal((svg.match(/r="21"/g)||[]).length,1);
+});
+
+
+test('new own goals score for the selected team and legacy drafts migrate without changing scores',()=>{
+  const match=readyMatch();match.events=createPlayerEvents('乌龙','12','home',[],match,records);
+  assert.deepEqual(calculateScore(match.events),{home:1,away:0,shootout:{home:0,away:0}});
+  assert.equal(match.events[0].teamRole,'scoring');
+  const old={id:'old',type:'乌龙',time:'15',side:'home',playerId:zhang};match.events=[old];
+  const oldScore=calculateScore(match.events),saved=()=>JSON.parse(JSON.stringify({version:2,records,match,numberHistory:{}}));
+  const migrated=restoreState(saved());
+  assert.equal(migrated.match.events[0].side,'away');assert.equal(migrated.match.events[0].teamRole,'scoring');
+  assert.deepEqual(calculateScore(migrated.match.events),oldScore);
+  const again=restoreState({version:2,...migrated});assert.equal(again.match.events[0].side,'away');
+  assert.deepEqual(calculateScore(again.match.events),oldScore);assert.equal(old.side,'home');
 });
