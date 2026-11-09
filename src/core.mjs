@@ -2,7 +2,7 @@
 export const TYPES = ['进球', '点球', '乌龙', '助攻', '黄牌', '红牌', '两黄', '射失点球', '换下', '换上'];
 export const ICONS = {进球:'G',点球:'PG',乌龙:'icon_w',助攻:'AS',黄牌:'YC',红牌:'RC',两黄:'YYR',射失点球:'PM',换下:'SO',换上:'SI'};
 export const TEAM_LEADER = '__team_leader__';
-export const allowsTeamLeader = type => type==='红牌' || type==='黄牌';
+export const allowsTeamLeader = type => ['红牌','黄牌','两黄'].includes(type);
 export const CUSTOM_TOURNAMENT = '__custom__';
 const tournamentNames={'2026新生杯':'2026年新生杯男子足球赛','2026-27五人制女足北大杯':'2026-27北大杯女子足球赛','2026-27女足北大杯':'2026-27北大杯女子足球赛'};
 const teamNames={'法学院':'法学','外国语学院':'外院','信息管理学院—历史学系联队':'信历','经济学院':'经济','生命科学学院':'生科'};

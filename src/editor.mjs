@@ -182,7 +182,7 @@ function updateEventFields(){
   $('event-player-label').textContent=substitution?'换下球员':'球员';$('custom-event-label').textContent=substitution?'换下球员姓名':'球员姓名';
   const nameHint=custom?'可填写未列入首发的球员姓名，也可选择已有球员；非首发球员号码可留空。':'可以选择报名名单中的所有球员，包括替补。';
   document.querySelector('label[for="event-side"]').textContent=ownGoal?'得分球队':'所属球队';
-  $('event-hint').textContent=ownGoal?'选择因乌龙球得分的球队，OG 显示在该队一侧，无需指定球员。':nameHint+(card?' 红牌、黄牌也可选择领队。':'');
+  $('event-hint').textContent=ownGoal?'选择因乌龙球得分的球队，OG 显示在该队一侧，无需指定球员。':nameHint+(card?' 红牌、黄牌、两黄转红也可选择领队。':'');
 }
 for(const [nameId,numberId] of [['custom-event-name','custom-event-number'],['custom-event-in-name','custom-event-in-number']])$(nameId).addEventListener('input',()=>{
   const player=rosterFor(records,match,$('event-side').value).find(p=>p.name===$(nameId).value.trim());$(numberId).value=player?matchNumber(match,$('event-side').value,player):'';updateEventFields();
@@ -234,7 +234,7 @@ $('batch-events').addEventListener('click',()=>{
 function updateBatchHelp(){
   const ownGoal=$('batch-type').value==='乌龙';
   $('batch-help').textContent=ownGoal?'乌龙球格式：时间,得分球队；无需填写球员，OG 显示在得分方一侧。':isCustom()?'时间,球队,姓名或“号码 姓名”；可填写未列入首发的球员。换人使用：时间,球队,换下球员,换上球员。':'时间,球队,球员号码或姓名；换人使用：时间,球队,换下球员,换上球员。重名时使用号码。';
-  if(allowsTeamLeader($('batch-type').value))$('batch-help').textContent+=' 对领队的红黄牌可写：时间,球队,领队。';
+  if(allowsTeamLeader($('batch-type').value))$('batch-help').textContent+=' 对领队的红牌、黄牌、两黄转红可写：时间,球队,领队。';
   $('batch-input').placeholder=ownGoal?`12,${match.home}\n40+2,${match.away}`:'12,信科,7\n40+2,物院,10';
 }
 $('batch-type').addEventListener('change',updateBatchHelp);
