@@ -1,0 +1,16 @@
+{
+  "name": "match-editor-api",
+  "account_id": "1df7783c888de0836cefdbb00dbcd147",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-10",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": { "ALLOWED_ORIGIN": "https://zajuak.github.io" },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "match-editor-rosters",
+    "database_id": "64830ae6-3194-49f1-99ea-f6d1aed0fc06",
+    "migrations_dir": "migrations"
+  }],
+  "observability": { "enabled": true }
+}

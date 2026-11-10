@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="管理员维护共享赛事、球队和球员名单。">
+  <title>共享名单管理 · 赛果图编辑器</title>
+  <link rel="stylesheet" href="./editor.css">
+  <link rel="stylesheet" href="./admin.css">
+  <script type="module" src="./admin.mjs"></script>
+</head>
+<body class="admin-page">
+  <header class="admin-topbar">
+    <div>
+      <a class="admin-back" href="./index.html">返回赛果图编辑器</a>
+      <h1>共享名单管理</h1>
+      <p>维护赛事、球队与球员，修改将影响所有使用者。</p>
+    </div>
+    <div class="account-area">
+      <span id="session-label" class="session-label"></span>
+      <button id="logout" class="secondary" type="button" hidden>退出登录</button>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <section id="loading-view" class="card admin-state" aria-live="polite">
+      <h2>正在检查登录状态</h2>
+      <p class="hint">请稍候…</p>
+    </section>
+
+    <section id="auth-view" class="card login-card" aria-labelledby="login-title" hidden>
+      <h2 id="login-title">管理员登录</h2>
+      <p class="hint">输入后台管理密码，维护共享赛事和名单。</p>
+      <form id="login-form">
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="输入密码">
+        <p id="auth-error" class="error form-error" role="alert"></p>
+        <button id="login-submit" class="primary login-submit" type="submit">登录</button>
+      </form>
+    </section>
+
+    <section id="denied-view" class="card admin-state" aria-labelledby="denied-title" hidden>
+      <h2 id="denied-title">当前账号无管理员权限</h2>
+      <p id="denied-message" class="hint">你可以退出后改用管理员账号登录。</p>
+      <p id="access-error" class="error" role="alert"></p>
+      <button id="retry-access" class="secondary" type="button">重新检查权限</button>
+    </section>
+
+    <section id="admin-view" aria-label="共享名单管理面板" hidden>
+      <div class="admin-toolbar card">
+        <div>
+          <h2>赛事 → 球队 → 球员</h2>
+          <p id="roster-status" class="hint" role="status">正在读取共享名单…</p>
+        </div>
+        <button id="refresh-rosters" class="secondary" type="button">刷新共享名单</button>
+      </div>
+      <p id="workspace-error" class="error workspace-error" role="alert" hidden></p>
+
+      <div class="admin-panel-grid">
+        <section class="card admin-panel" aria-labelledby="tournament-heading">
+          <header class="panel-heading">
+            <div><span class="panel-step">01</span><h2 id="tournament-heading">赛事</h2></div>
+            <button id="add-tournament" class="primary small-button" type="button">新增赛事</button>
+          </header>
+          <p class="hint panel-hint">选择赛事后维护其球队；编辑赛事可设置是否启用首发阵容。</p>
+          <div id="tournament-list" class="admin-list"></div>
+        </section>
+
+        <section class="card admin-panel" aria-labelledby="team-heading">
+          <header class="panel-heading">
+            <div><span class="panel-step">02</span><h2 id="team-heading">球队</h2></div>
+            <button id="add-team" class="primary small-button" type="button" disabled>新增球队</button>
+          </header>
+          <p id="team-context" class="hint panel-hint">请先选择赛事。</p>
+          <div id="team-list" class="admin-list"></div>
+        </section>
+
+        <section class="card admin-panel" aria-labelledby="player-heading">
+          <header class="panel-heading">
+            <div><span class="panel-step">03</span><h2 id="player-heading">球员</h2></div>
+            <button id="add-player" class="primary small-button" type="button" disabled>新增球员</button>
+          </header>
+          <p id="player-context" class="hint panel-hint">请先选择球队。</p>
+          <label for="player-search" class="sr-only">搜索当前球队球员</label>
+          <input id="player-search" class="player-search" type="search" maxlength="80" placeholder="搜索当前球队球员" autocomplete="off" disabled>
+          <p id="player-search-hint" class="hint search-hint"></p>
+          <div id="player-list" class="admin-list"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="record-dialog" aria-labelledby="record-dialog-title">
+    <header class="dialog-header">
+      <h2 id="record-dialog-title">编辑名单</h2>
+      <button class="close" type="button" data-close-dialog aria-label="关闭名单编辑">×</button>
+    </header>
+    <form id="record-form">
+      <div class="dialog-body">
+        <p id="record-dialog-description" class="hint"></p>
+        <label id="record-name-label" for="record-name">名称</label>
+        <input id="record-name" name="name" required maxlength="80" autocomplete="off" placeholder="输入 1–80 个字符">
+        <label id="lineups-field" class="check-inline lineups-field" hidden>
+          <input id="record-lineups" type="checkbox" checked>
+          启用首发阵容
+        </label>
+        <p class="hint">名称保存前会去除首尾空白；同一层级内不可重名。</p>
+        <p id="record-error" class="error form-error" role="alert"></p>
+      </div>
+      <footer class="dialog-footer">
+        <button class="secondary" type="button" data-close-dialog>取消</button>
+        <button id="record-submit" class="primary" type="submit">保存</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" hidden></div>
+  <noscript><p class="error noscript">此管理页面需要启用 JavaScript。</p></noscript>
+</body>
+</html>
