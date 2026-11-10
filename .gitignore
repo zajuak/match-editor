@@ -10,3 +10,5 @@ private/
 *.xlsx
 *.xls
 __pycache__/
+supabase/.branches/
+supabase/.temp/

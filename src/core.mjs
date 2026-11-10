@@ -15,7 +15,7 @@ export function normalizeRosterRecord(player){
 
 export const escapeXML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export const key = (...parts) => JSON.stringify(parts);
-export const blankMatch = () => ({id:crypto.randomUUID(),tournament:'',home:'',away:'',title:'',starters:{home:[],away:[]},goalkeepers:{home:'',away:''},numbers:{home:{},away:{}},events:[],showLineups:true});
+export const blankMatch = () => ({id:crypto.randomUUID(),tournament:'',tournamentId:'',home:'',away:'',teamIds:{home:'',away:''},title:'',starters:{home:[],away:[]},goalkeepers:{home:'',away:''},numbers:{home:{},away:{}},events:[],showLineups:true});
 export const playerId = player => player.id || key(player.tournament,player.team,player.name);
 export const matchNumber = (match,side,player) => match.numbers?.[side]?.[typeof player==='string'?player:playerId(player)] || '';
 export const isGoalkeeper = (match,side,player) => {
@@ -119,10 +119,10 @@ export function parseCustomStarters(text,tournament,team) {
 }
 // Upgrade old number-based relationships before loading the official rosters.
 export function restoreState(saved) {
-  if(!saved || ![1,2].includes(saved.version))return {records:[],match:blankMatch(),numberHistory:{}};
+  if(!saved || ![1,2,3].includes(saved.version))return {records:[],match:blankMatch(),numberHistory:{}};
   const correctedPlayer=p=>{const next=normalizeRosterRecord(p);return p.tournament!==next.tournament || p.team!==next.team || p.name!==next.name;};
   const matchNeedsCorrection=saved.match && ['home','away'].some(side=>correctedPlayer({tournament:saved.match.tournament,team:saved.match[side],name:''}));
-  if(saved.records?.some(correctedPlayer) || matchNeedsCorrection){
+  if(saved.version!==3 && (saved.records?.some(correctedPlayer) || matchNeedsCorrection)){
     saved=structuredClone(saved);
     const ids=new Map();
     for(const player of saved.records||[])if(correctedPlayer(player)){
@@ -146,7 +146,7 @@ export function restoreState(saved) {
   const counts=new Map();for(const p of source){const id=key(p.tournament,p.team,p.name);counts.set(id,(counts.get(id)||0)+1);}
   const records=source.map(r=>({...r,id:r.id || (counts.get(key(r.tournament,r.team,r.name))>1?key(r.tournament,r.team,r.name,r.number):playerId(r))}));
   validateRecords(records);
-  const match={...blankMatch(),...saved.match,goalkeepers:{home:'',away:'',...saved.match?.goalkeepers},numbers:saved.match?.numbers||{home:{},away:{}}};
+  const match={...blankMatch(),...saved.match,teamIds:{home:'',away:'',...saved.match?.teamIds},goalkeepers:{home:'',away:'',...saved.match?.goalkeepers},numbers:saved.match?.numbers||{home:{},away:{}}};
   let numberHistory=mergeNumberHistories({},saved.numberHistory,records);
   if(legacy){
     for(const side of ['home','away']) {
@@ -159,22 +159,66 @@ export function restoreState(saved) {
   match.events=match.events.map(event=>event.type==='乌龙' && event.teamRole!=='scoring'?{...event,side:scoringSide(event),teamRole:'scoring'}:event);
   return {records,match,numberHistory};
 }
-export const rosterFor = (records,match,side) => records.filter(r=>r.tournament===match.tournament && r.team===match[side]);
-export function reconcileOfficialDraft(match,numberHistory,records) {
-  if(!records.some(r=>r.tournament===match.tournament)){
-    const tournament=records[0]?.tournament||'';
-    return {match:{...blankMatch(),tournament,title:tournament},numberHistory:mergeNumberHistories({},numberHistory,records)};
+export const rosterFor = (records,match,side) => match.tournamentId && match.teamIds?.[side]
+  ? records.filter(r=>r.tournamentId===match.tournamentId && r.teamId===match.teamIds[side])
+  : records.filter(r=>r.tournament===match.tournament && r.team===match[side]);
+function inferredTournaments(records) {
+  const result=new Map();
+  for(const player of records){
+    const tournamentId=player.tournamentId||'',teamId=player.teamId||'',tournamentKey=JSON.stringify([tournamentId,player.tournament]),teamKey=JSON.stringify([teamId,player.team]);
+    if(!result.has(tournamentKey))result.set(tournamentKey,{id:tournamentId,name:player.tournament,lineups:true,teams:new Map()});
+    const teams=result.get(tournamentKey).teams;
+    if(!teams.has(teamKey))teams.set(teamKey,{id:teamId,name:player.team});
   }
-  const next={...match,starters:{home:[],away:[]},goalkeepers:{home:'',away:''},numbers:{home:{},away:{}},events:[...match.events]},validPlayers={};
+  return [...result.values()].map(tournament=>({...tournament,teams:[...tournament.teams.values()]}));
+}
+export function reconcileOfficialDraft(match,numberHistory,records,tournaments=inferredTournaments(records)) {
+  const idMap=new Map(records.flatMap(player=>{
+    const legacy=player.legacyKey||player.legacy_key;
+    return legacy?[[legacy,playerId(player)]]:[];
+  }));
+  const rename=id=>idMap.get(id)||id,remappedHistory={};
+  for(const [id,entries] of Object.entries(numberHistory||{})){
+    const nextId=rename(id);remappedHistory[nextId]=[...(remappedHistory[nextId]||[]),...(entries||[])];
+  }
+  const oldTournament=match.tournament;
+  const legacyPlayers=records.flatMap(player=>{
+    try{const fields=JSON.parse(player.legacyKey||player.legacy_key||'null');return Array.isArray(fields) && fields[0]===oldTournament?[{player,team:fields[1]}]:[];}catch{return [];}
+  });
+  const legacyTournamentIds=[...new Set(legacyPlayers.map(({player})=>player.tournamentId).filter(Boolean))];
+  const tournamentId=match.tournamentId||(legacyTournamentIds.length===1?legacyTournamentIds[0]:'');
+  const tournament=tournamentId?tournaments.find(item=>item.id===tournamentId):tournaments.find(item=>item.name===match.tournament);
+  if(!tournament){
+    const first=tournaments[0];
+    return {match:{...blankMatch(),tournament:first?.name||'',tournamentId:first?.id||'',title:first?.name||''},numberHistory:mergeNumberHistories({},remappedHistory,records)};
+  }
+  const next=structuredClone(match);
+  next.tournament=tournament.name;next.tournamentId=tournament.id||'';next.lineupsEnabled=tournament.lineups!==false;
+  if(next.title===oldTournament)next.title=tournament.name;
+  next.teamIds={home:'',away:'',...match.teamIds};
   for(const side of ['home','away']){
-    const roster=rosterFor(records,match,side),ids=new Set(roster.map(playerId));validPlayers[side]=ids;
-    if(!match[side] || !ids.size){next[side]='';continue;}
-    next.starters[side]=match.starters[side].filter(id=>ids.has(id));
-    if(next.starters[side].includes(match.goalkeepers?.[side]))next.goalkeepers[side]=match.goalkeepers[side];
-    next.numbers[side]=Object.fromEntries(Object.entries(match.numbers[side]||{}).filter(([id])=>ids.has(id)));
+    next.starters[side]=(match.starters[side]||[]).map(rename);
+    next.goalkeepers[side]=rename(match.goalkeepers?.[side]||'');
+    next.numbers[side]=Object.fromEntries(Object.entries(match.numbers[side]||{}).map(([id,number])=>[rename(id),number]));
   }
-  next.events=match.events.filter(event=>event.type==='乌龙' || (event.recipient==='leader' && allowsTeamLeader(event.type))?Boolean(next[event.side]):validPlayers[event.side]?.has(event.playerId));
-  return {match:next,numberHistory:mergeNumberHistories({},numberHistory,records)};
+  next.events=(match.events||[]).map(event=>event.playerId?{...event,playerId:rename(event.playerId)}:{...event});
+  const validPlayers={};
+  for(const side of ['home','away']){
+    const teams=tournament.teams||[];
+    const legacyTeamIds=[...new Set(legacyPlayers.filter(item=>item.team===match[side] && item.player.tournamentId===tournament.id).map(({player})=>player.teamId).filter(Boolean))];
+    const teamId=match.teamIds?.[side]||(legacyTeamIds.length===1?legacyTeamIds[0]:'');
+    const team=teamId?teams.find(item=>item.id===teamId):teams.find(item=>item.name===match[side]);
+    if(!team){
+      next[side]='';next.teamIds[side]='';next.starters[side]=[];next.goalkeepers[side]='';next.numbers[side]={};validPlayers[side]=new Set();continue;
+    }
+    next[side]=team.name;next.teamIds[side]=team.id||'';
+    const ids=new Set(rosterFor(records,next,side).map(playerId));validPlayers[side]=ids;
+    next.starters[side]=next.starters[side].filter(id=>ids.has(id));
+    if(!next.starters[side].includes(next.goalkeepers[side]))next.goalkeepers[side]='';
+    next.numbers[side]=Object.fromEntries(Object.entries(next.numbers[side]).filter(([id])=>ids.has(id)));
+  }
+  next.events=next.events.filter(event=>event.type==='乌龙' || (event.recipient==='leader' && allowsTeamLeader(event.type))?Boolean(next[event.side]):validPlayers[event.side]?.has(event.playerId));
+  return {match:next,numberHistory:mergeNumberHistories({},remappedHistory,records)};
 }
 export function parseBatch(text,type,match,records) {
   if(!TYPES.includes(type) && type!=='换人')throw new Error('请选择事件类型。');

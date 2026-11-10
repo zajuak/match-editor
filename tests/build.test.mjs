@@ -8,16 +8,18 @@ import {build} from '../scripts/build.mjs';
 test('standalone build resolves versioned entrypoints, modules and roster assets',async()=>{
   const temp=await mkdtemp(path.join(tmpdir(),'match-editor-build-'));
   try{
-    const {destination,version}=await build(path.join(temp,'dist'));
+    const {destination,version}=await build(path.join(temp,'dist'),{environment:{SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'publishable-test'},requireConfig:true});
     const html=await readFile(path.join(destination,'index.html'),'utf8');
     assert.ok(html.includes(`./editor.mjs?v=${version}`));assert.ok(html.includes(`./editor.css?v=${version}`));
-    for(const file of ['index.html','editor.mjs','importers.mjs']){
+    for(const file of ['index.html','admin.html','editor.mjs','admin.mjs','admin-api.mjs','rosters.mjs','supabase-client.mjs','importers.mjs']){
       const content=await readFile(path.join(destination,file),'utf8');
       const references=file==='index.html'?/(?:src=|href=)['"](\.\/[^'"]+)['"]/g:/from ['"](\.\/[^'"]+)['"]/g;
       for(const [,relative] of content.matchAll(references)){
         assert.ok((await stat(path.join(destination,relative.split('?')[0]))).isFile(),relative);
       }
     }
+    const runtime=await readFile(path.join(destination,'runtime-config.mjs'),'utf8');
+    assert.ok(runtime.includes('https://example.supabase.co'));assert.ok(runtime.includes('publishable-test'));assert.ok(!runtime.includes('service_role'));
     const manifest=JSON.parse(await readFile(path.join(destination,'data/manifest.json'),'utf8'));
     for(const tournament of manifest.tournaments){
       const roster=JSON.parse(await readFile(path.join(destination,'data',tournament.roster),'utf8'));

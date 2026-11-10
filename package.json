@@ -10,7 +10,14 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "test": "node --test tests/*.test.mjs",
+    "test:rls": "node tests/rls.integration.mjs",
     "build": "node scripts/build.mjs",
     "preview": "node scripts/dev.mjs --dir dist"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0"
+  },
+  "devDependencies": {
+    "supabase": "^2.122.1"
   }
 }

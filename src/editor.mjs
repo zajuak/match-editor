@@ -1,5 +1,6 @@
 import {TYPES,ICONS,TEAM_LEADER,allowsTeamLeader,CUSTOM_TOURNAMENT,escapeXML as esc,blankMatch,rosterFor,parseBatch,sortedEvents,calculateScore,playerLabel,renderPoster,playerId,matchNumber,previousNumber,rememberNumber,setMatchNumber,missingNumbers,restoreState,createPlayerEvents,createCustomEvents,parseCustomBatch,reconcileOfficialDraft,parseCustomStarters,isGoalkeeper,setGoalkeeper,missingGoalkeepers} from './core.mjs';
-import {loadOfficialData} from './importers.mjs';
+import {loadSharedRosters} from './rosters.mjs';
+import {supabaseClient} from './supabase-client.mjs';
 const $=id=>document.getElementById(id), storageKey='junkai-match-editor-v1';
 let tournaments=[],records=[],match=blankMatch(),numberHistory={},lineupSide='home',editingId=null,pendingEvents=null,pendingCustom=null,svg='',icons={},draggedId=null,toastTimer,rostersReady=false,customDirty=false;
 try {
@@ -8,13 +9,13 @@ try {
 } catch { $('save-status').textContent='暂时无法读取本地草稿，可继续编辑。'; }
 function save() {
   if(!rostersReady && !isCustom())return;
-  try{localStorage.setItem(storageKey,JSON.stringify({version:2,records,match,numberHistory}));$('save-status').textContent='比赛草稿与历史号码已保存到当前浏览器';}
+  try{localStorage.setItem(storageKey,JSON.stringify({version:3,records,match,numberHistory}));$('save-status').textContent='比赛草稿与历史号码已保存到当前浏览器';}
   catch{$('save-status').textContent='浏览器存储不可用，请及时导出图片。';}
 }
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,4000);}
 const isCustom=()=>match.tournament===CUSTOM_TOURNAMENT;
-const names=()=>[...new Set(records.filter(r=>r.tournament!==CUSTOM_TOURNAMENT).map(r=>r.tournament))];
-const teams=()=>[...new Set(records.filter(r=>r.tournament===match.tournament).map(r=>r.team))];
+const currentTournament=()=>tournaments.find(t=>t.id===match.tournamentId);
+const teams=()=>currentTournament()?.teams||[];
 const option=(value,label,disabled=false)=>`<option value="${esc(value)}"${disabled?' disabled':''}>${esc(label)}</option>`;
 function fill(select,items,value,placeholder){select.innerHTML=(placeholder?option('',placeholder):'')+items.map(([v,l,d])=>option(v,l,d)).join('');select.value=value;}
 function hasMatchWork(){return match.events.length || match.starters.home.length || match.starters.away.length || Object.values(match.numbers).some(numbers=>Object.values(numbers).some(Boolean));}
@@ -22,7 +23,7 @@ function hasWork(){return customDirty || hasMatchWork();}
 function discardMatch(question){return !hasWork() || confirm(question+' 当前比赛的事件、首发与本场号码将清空，历史号码会保留。');}
 function syncControls(){
   const custom=isCustom();
-  match.lineupsEnabled=tournaments.find(t=>t.name===match.tournament)?.lineups!==false;
+  match.lineupsEnabled=currentTournament()?.lineups!==false;
   if(!match.lineupsEnabled){match.showLineups=false;match.starters={home:[],away:[]};match.goalkeepers={home:'',away:''};}
   const lineups=match.lineupsEnabled;
   $('lineup-heading').textContent=lineups?'首发与本场号码':'本场号码';
@@ -31,8 +32,8 @@ function syncControls(){
   $('clear-lineup').hidden=!lineups;
   $('lineup-tabs').setAttribute('aria-label',lineups?'首发球队':'球队名单');
   $('preview-sync-hint').textContent=lineups?'首发、事件与比分同步更新':'事件与比分同步更新';
-  fill($('tournament'),[...names().map(n=>[n,n]),[CUSTOM_TOURNAMENT,'自定义比赛']],match.tournament,'选择赛事');
-  for(const side of ['home','away'])fill($(`${side}-team`),teams().map(n=>[n,n,n===match[side==='home'?'away':'home']]),match[side],side==='home'?'选择主队':'选择客队');
+  fill($('tournament'),[...tournaments.map(t=>[t.id,t.name]),[CUSTOM_TOURNAMENT,'自定义比赛']],custom?CUSTOM_TOURNAMENT:match.tournamentId,'选择赛事');
+  for(const side of ['home','away'])fill($(`${side}-team`),teams().map(t=>[t.id,t.name,t.id===match.teamIds?.[side==='home'?'away':'home']]),match.teamIds?.[side]||'',side==='home'?'选择主队':'选择客队');
   $('official-team-selects').hidden=custom;$('custom-match-fields').hidden=!custom;$('lineup-editor').hidden=custom;
   $('match-title').value=match.title;$('show-lineups').checked=match.showLineups;
   if(custom){
@@ -75,17 +76,21 @@ function render(){
 }
 function changed(){save();render();}
 function requireTeams(){if(isCustom() && customDirty){toast('球队与首发尚未应用，请先点击“应用球队与首发”。');return false;}if(!match.home || !match.away){toast(isCustom()?'请先填写并应用双方球队与首发。':'请先选择赛事、主队和客队。');return false;}return true;}
-function resetForTeams(tournament,home='',away=''){
-  const old=match;match={...blankMatch(),id:old.id,tournament,home,away,title:old.title,numbers:{home:old.home===home?old.numbers.home:{},away:old.away===away?old.numbers.away:{}}};syncControls();save();
+function resetForTeams(homeId='',awayId=''){
+  const old=match,home=teams().find(t=>t.id===homeId)?.name||'',away=teams().find(t=>t.id===awayId)?.name||'';
+  match={...blankMatch(),id:old.id,tournament:old.tournament,tournamentId:old.tournamentId,home,away,teamIds:{home:homeId,away:awayId},title:old.title,numbers:{home:old.teamIds?.home===homeId?old.numbers.home:{},away:old.teamIds?.away===awayId?old.numbers.away:{}}};syncControls();save();
 }
 $('tournament').addEventListener('change',event=>{
-  if(!discardMatch('切换赛事？')){event.target.value=match.tournament;return;}
-  const selected=event.target.value;records=records.filter(r=>r.tournament!==CUSTOM_TOURNAMENT);match=blankMatch();match.tournament=selected;match.title=selected===CUSTOM_TOURNAMENT?'自定义比赛':selected;customDirty=false;syncControls();save();
+  if(!discardMatch('切换赛事？')){event.target.value=isCustom()?CUSTOM_TOURNAMENT:match.tournamentId;return;}
+  const selected=event.target.value,tournament=tournaments.find(t=>t.id===selected);records=records.filter(r=>r.tournament!==CUSTOM_TOURNAMENT);match=blankMatch();
+  if(selected===CUSTOM_TOURNAMENT){match.tournament=CUSTOM_TOURNAMENT;match.title='自定义比赛';}
+  else if(tournament){match.tournament=tournament.name;match.tournamentId=tournament.id;match.title=tournament.name;}
+  customDirty=false;syncControls();save();
 });
 for(const side of ['home','away'])$(`${side}-team`).addEventListener('change',event=>{
-  if(!discardMatch('更换球队？')){event.target.value=match[side];return;}
-  const home=side==='home'?event.target.value:match.home,away=side==='away'?event.target.value:match.away;
-  if(home && home===away){toast('主队与客队不能相同。');syncControls();return;}resetForTeams(match.tournament,home,away);
+  if(!discardMatch('更换球队？')){event.target.value=match.teamIds?.[side]||'';return;}
+  const home=side==='home'?event.target.value:match.teamIds.home,away=side==='away'?event.target.value:match.teamIds.away;
+  if(home && home===away){toast('主队与客队不能相同。');syncControls();return;}resetForTeams(home,away);
 });
 for(const id of ['custom-home-name','custom-away-name','custom-home-starters','custom-away-starters'])$(id).addEventListener('input',()=>{customDirty=true;});
 $('apply-custom').addEventListener('click',()=>{
@@ -126,31 +131,32 @@ function updateNumber(id,value,{renderFields=true,report=true}={}){
 $('lineup-list').addEventListener('input',event=>{if(event.target.matches('.match-number'))updateNumber(event.target.dataset.playerId,event.target.value,{renderFields:false,report:false});});
 $('lineup-list').addEventListener('click',event=>{const button=event.target.closest('[data-use-last]');if(button)updateNumber(button.dataset.useLast,button.dataset.number);});
 $('clear-lineup').addEventListener('click',()=>{match.starters[lineupSide]=[];match.goalkeepers[lineupSide]='';renderLineup();renderEvents();changed();});
-$('new-match').addEventListener('click',()=>{if(!confirm('开始新比赛？当前比赛标题、事件、首发与本场号码将清空，官方名单与历史号码会保留。'))return;const tournament=match.tournament;if(tournament===CUSTOM_TOURNAMENT)records=records.filter(r=>r.tournament!==CUSTOM_TOURNAMENT);match={...blankMatch(),tournament};match.title=tournament===CUSTOM_TOURNAMENT?'自定义比赛':tournament;customDirty=false;syncControls();save();});
+$('new-match').addEventListener('click',()=>{if(!confirm('开始新比赛？当前比赛标题、事件、首发与本场号码将清空，官方名单与历史号码会保留。'))return;const {tournament,tournamentId}=match;if(tournament===CUSTOM_TOURNAMENT)records=records.filter(r=>r.tournament!==CUSTOM_TOURNAMENT);match={...blankMatch(),tournament,tournamentId};match.title=tournament===CUSTOM_TOURNAMENT?'自定义比赛':tournament;customDirty=false;syncControls();save();});
 
 // Native dialogs provide Escape dismissal, focus trapping and focus restoration.
 document.querySelectorAll('[data-close]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog').close()));
 document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left || event.clientX>rect.right || event.clientY<rect.top || event.clientY>rect.bottom)dialog.close();}));
 function download(blob,name){const link=document.createElement('a'),url=URL.createObjectURL(blob);link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function loadRosters(){
-  $('roster-summary').hidden=false;$('roster-summary').classList.remove('error');$('roster-summary').textContent='正在读取官方报名名单…';
+  $('roster-summary').hidden=false;$('roster-summary').classList.remove('error');$('roster-summary').textContent='正在读取共享报名名单…';$('retry-rosters').hidden=true;
   $('download-svg').disabled=true;$('download-png').disabled=true;
   try{
-    const official=await loadOfficialData(new URL('./data/manifest.json',document.baseURI).href);
-    const officialRecords=official.records;tournaments=official.tournaments;
+    const official=await loadSharedRosters(supabaseClient()),officialRecords=official.records;tournaments=official.tournaments;
     if(isCustom())records=[...officialRecords,...records.filter(r=>r.tournament===CUSTOM_TOURNAMENT)];
-    else{records=officialRecords;({match,numberHistory}=reconcileOfficialDraft(match,numberHistory,records));}
+    else{records=officialRecords;({match,numberHistory}=reconcileOfficialDraft(match,numberHistory,records,tournaments));}
     rostersReady=true;syncControls();save();$('download-svg').disabled=false;$('download-png').disabled=false;
   }catch(error){
     if(isCustom()){
       records=records.filter(r=>r.tournament===CUSTOM_TOURNAMENT);rostersReady=true;syncControls();save();
-      $('roster-summary').hidden=false;$('roster-summary').classList.add('error');$('roster-summary').textContent='官方名单不可用，当前自定义比赛仍可继续编辑。';
+      $('roster-summary').hidden=false;$('roster-summary').classList.add('error');$('roster-summary').textContent='共享名单不可用，当前自定义比赛仍可继续编辑。';
     }else{
-      records=[];match=blankMatch();rostersReady=false;syncControls();
-      $('roster-summary').hidden=false;$('roster-summary').classList.add('error');$('roster-summary').textContent=`官方名单加载失败：${error.message} 请检查 data 文件后刷新页面。`;
+      records=[];tournaments=[];rostersReady=false;syncControls();
+      $('roster-summary').hidden=false;$('roster-summary').classList.add('error');$('roster-summary').textContent=`共享名单加载失败：${error.message} 未使用可能过期的本地名单。`;
     }
+    $('retry-rosters').hidden=false;
   }
 }
+$('retry-rosters').addEventListener('click',loadRosters);
 
 const typeOptions=[...TYPES,'换人'].map(type=>[type,type==='乌龙'?'乌龙球':type==='两黄'?'两黄转红':type==='换人'?'换人（成对）':type]);
 fill($('event-type'),typeOptions,'进球');fill($('batch-type'),typeOptions,'进球');
