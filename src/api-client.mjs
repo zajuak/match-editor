@@ -13,8 +13,16 @@ export class RosterClient {
     const headers={};if(this.token)headers.Authorization=`Bearer ${this.token}`;
     if(body!==undefined)headers['Content-Type']='application/json';
     if(write){if(!Number.isSafeInteger(this.revision))await this.getRosters();headers['If-Match']=String(this.revision);}
-    let response;try{response=await this.fetcher(this.baseURL+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),credentials:'omit',cache:'no-store',signal:AbortSignal.timeout(20000)});}catch{throw new Error('无法连接共享名单服务，请检查网络后重试。');}
-    let data;try{data=await response.json();}catch{throw new Error('共享名单服务返回了无效内容。');}
+    // Avoid AbortSignal.timeout(), which is unavailable in some otherwise supported browsers.
+    const controller=typeof globalThis.AbortController==='function'?new globalThis.AbortController():null;
+    const timer=controller?setTimeout(()=>controller.abort(),20000):null;
+    let response,data;
+    try{
+      try{response=await this.fetcher(this.baseURL+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),credentials:'omit',cache:'no-store',signal:controller?.signal});}
+      catch(cause){throw new Error(controller?.signal.aborted?'连接名单服务超时，请稍后重试。':'无法连接共享名单服务，请检查网络后重试。',{cause});}
+      try{data=await response.json();if(!data || typeof data!=='object' || Array.isArray(data))throw new Error('Invalid API response');}
+      catch(cause){throw new Error(controller?.signal.aborted?'连接名单服务超时，请稍后重试。':'共享名单服务返回了无效内容。',{cause});}
+    }finally{if(timer!==null)clearTimeout(timer);}
     if(!response.ok){if(response.status===401)this.setToken('');const error=new Error(data.error||'操作失败，请稍后重试。');error.status=response.status;throw error;}
     if(Number.isSafeInteger(data.revision))this.revision=data.revision;
     return data;

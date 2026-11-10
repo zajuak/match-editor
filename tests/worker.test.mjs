@@ -96,3 +96,25 @@ test('public rosters remain available when browser session storage is blocked',a
     assert.equal(client.token,'');assert.deepEqual((await client.getRosters()).tournaments,[]);
   }finally{if(previous)Object.defineProperty(globalThis,'sessionStorage',previous);else delete globalThis.sessionStorage;}
 });
+
+
+test('browser clients can log in without AbortSignal.timeout support',async()=>{
+  const descriptor=Object.getOwnPropertyDescriptor(AbortSignal,'timeout');
+  Object.defineProperty(AbortSignal,'timeout',{configurable:true,value:undefined});
+  try{
+    const f=await fixture();
+    assert.ok(await f.client.getSession());await f.client.logout();assert.equal(await f.client.getSession(),null);
+    f.sqlite.close();
+  }finally{Object.defineProperty(AbortSignal,'timeout',descriptor);}
+});
+
+test('browser clients still send requests when AbortController is unavailable',async()=>{
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'AbortController');
+  const response={ok:true,json:async()=>({revision:0,tournaments:[]})};
+  Object.defineProperty(globalThis,'AbortController',{configurable:true,value:undefined});
+  try{
+    let called=false;
+    const client=new RosterClient('https://api.example',{storage:null,fetcher:async()=>{called=true;return response;}});
+    assert.equal((await client.getRosters()).revision,0);assert.equal(called,true);
+  }finally{Object.defineProperty(globalThis,'AbortController',descriptor);}
+});
