@@ -13,9 +13,9 @@
       <header class="brand"><h1>⚽ 赛果图编辑器</h1></header>
       <div class="controls">
         <section class="card">
-          <div class="section-heading"><h2><span>01</span> 赛事与名单</h2><a class="link-button" href="./admin.html">名单管理</a></div>
-          <label for="tournament">选择赛事</label><select id="tournament"><option value="">正在加载共享名单…</option></select>
-          <p id="roster-summary" class="hint" role="status">正在读取共享报名名单…</p><button id="retry-rosters" class="link-button" type="button" hidden>重新加载共享名单</button>
+          <div class="section-heading"><h2><span>01</span> 赛事与名单</h2><div class="row"><button id="sync-rosters" class="link-button" type="button" title="获取后台最新名单">更新名单</button><a class="link-button" href="./admin.html">名单管理</a></div></div>
+          <label for="tournament">选择赛事</label><select id="tournament"><option value="">正在加载默认名单…</option></select>
+          <p id="roster-summary" class="hint" role="status">正在读取默认报名名单…</p><button id="retry-rosters" class="link-button" type="button" hidden>重新加载默认名单</button>
         </section>
         <section class="card">
           <h2><span>02</span> 比赛信息</h2>

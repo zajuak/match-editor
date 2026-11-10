@@ -8,7 +8,7 @@ export const projectRoot=fileURLToPath(new URL('../',import.meta.url));
 export async function build(destination=path.join(projectRoot,'dist'),{environment=process.env,requireConfig=false}={}){
   const source=path.join(projectRoot,'src'),runtimeConfig=renderRuntimeConfig(environment,{required:requireConfig});
   const files=(await readdir(source)).filter(name=>/\.(mjs|css|html)$/.test(name)).sort();
-  const hash=createHash('sha256').update(runtimeConfig);
+  const hash=createHash('sha256').update(runtimeConfig).update(await readFile(path.join(source,'data/default-rosters.json')));
   for(const file of files)hash.update(file).update(await readFile(path.join(source,file)));
   const version=hash.digest('hex').slice(0,12);
   await rm(destination,{recursive:true,force:true});await mkdir(destination,{recursive:true});

@@ -1,8 +1,8 @@
 import {TYPES,ICONS,TEAM_LEADER,allowsTeamLeader,CUSTOM_TOURNAMENT,escapeXML as esc,blankMatch,rosterFor,parseBatch,sortedEvents,calculateScore,playerLabel,renderPoster,playerId,matchNumber,previousNumber,rememberNumber,setMatchNumber,missingNumbers,restoreState,createPlayerEvents,createCustomEvents,parseCustomBatch,reconcileOfficialDraft,parseCustomStarters,isGoalkeeper,setGoalkeeper,missingGoalkeepers} from './core.mjs';
-import {loadSharedRosters} from './rosters.mjs';
+import {loadSharedRosters,loadDefaultRosters,readCachedRosters,mappedSnapshot,ROSTER_CACHE_KEY} from './rosters.mjs';
 import {rosterClient} from './api-client.mjs';
 const $=id=>document.getElementById(id), storageKey='junkai-match-editor-v1';
-let tournaments=[],records=[],match=blankMatch(),numberHistory={},lineupSide='home',editingId=null,pendingEvents=null,pendingCustom=null,svg='',icons={},draggedId=null,toastTimer,rostersReady=false,customDirty=false;
+let tournaments=[],records=[],match=blankMatch(),numberHistory={},lineupSide='home',editingId=null,pendingEvents=null,pendingCustom=null,svg='',icons={},draggedId=null,toastTimer,rostersReady=false,customDirty=false,activeRosterRevision=-1,rostersLoading=false;
 try {
   const saved=JSON.parse(localStorage.getItem(storageKey)||'null');
   ({records,match,numberHistory}=restoreState(saved));
@@ -137,26 +137,43 @@ $('new-match').addEventListener('click',()=>{if(!confirm('开始新比赛？当�
 document.querySelectorAll('[data-close]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog').close()));
 document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left || event.clientX>rect.right || event.clientY<rect.top || event.clientY>rect.bottom)dialog.close();}));
 function download(blob,name){const link=document.createElement('a'),url=URL.createObjectURL(blob);link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-async function loadRosters(){
-  $('roster-summary').hidden=false;$('roster-summary').classList.remove('error');$('roster-summary').textContent='正在读取共享报名名单…';$('retry-rosters').hidden=true;
-  $('download-svg').disabled=true;$('download-png').disabled=true;
+function applyRosters(official){
+  if(official.revision<activeRosterRevision)return false;
+  const officialRecords=official.records;tournaments=official.tournaments;
+  if(isCustom())records=[...officialRecords,...records.filter(r=>r.tournament===CUSTOM_TOURNAMENT)];
+  else{records=officialRecords;({match,numberHistory}=reconcileOfficialDraft(match,numberHistory,records,tournaments));}
+  activeRosterRevision=official.revision;rostersReady=true;syncControls();save();return true;
+}
+async function loadRosters({cloud=false}={}){
+  if(rostersLoading)return;rostersLoading=true;
+  $('sync-rosters').disabled=true;$('sync-rosters').textContent=cloud?'更新中…':'更新名单';
+  $('roster-summary').hidden=false;$('roster-summary').classList.remove('error');$('roster-summary').textContent=cloud?'正在获取后台最新名单…':'正在读取默认名单…';$('retry-rosters').hidden=true;
+  if(!rostersReady){$('download-svg').disabled=true;$('download-png').disabled=true;}
   try{
-    const official=await loadSharedRosters(rosterClient()),officialRecords=official.records;tournaments=official.tournaments;
-    if(isCustom())records=[...officialRecords,...records.filter(r=>r.tournament===CUSTOM_TOURNAMENT)];
-    else{records=officialRecords;({match,numberHistory}=reconcileOfficialDraft(match,numberHistory,records,tournaments));}
-    rostersReady=true;syncControls();save();$('download-svg').disabled=false;$('download-png').disabled=false;
+    const official=cloud?await loadSharedRosters(rosterClient()):await loadDefaultRosters();
+    const applied=applyRosters(official);
+    if(cloud)toast(applied?'名单已更新。':'已保留当前较新的名单。');
   }catch(error){
-    if(isCustom()){
+    if(rostersReady){
+      $('roster-summary').hidden=false;$('roster-summary').classList.add('error');$('roster-summary').textContent='更新失败，已加载的名单仍可继续使用。';
+    }else if(isCustom()){
       records=records.filter(r=>r.tournament===CUSTOM_TOURNAMENT);rostersReady=true;syncControls();save();
-      $('roster-summary').hidden=false;$('roster-summary').classList.add('error');$('roster-summary').textContent='共享名单不可用，当前自定义比赛仍可继续编辑。';
+      $('roster-summary').hidden=false;$('roster-summary').classList.add('error');$('roster-summary').textContent='默认名单不可用，当前自定义比赛仍可继续编辑。';
     }else{
-      records=[];tournaments=[];rostersReady=false;syncControls();
-      $('roster-summary').hidden=false;$('roster-summary').classList.add('error');$('roster-summary').textContent=`共享名单加载失败：${error.message} 未使用可能过期的本地名单。`;
+      records=[];tournaments=[];syncControls();
+      $('roster-summary').hidden=false;$('roster-summary').classList.add('error');$('roster-summary').textContent=error.message;
     }
     $('retry-rosters').hidden=false;
-  }
+  }finally{rostersLoading=false;$('sync-rosters').disabled=false;$('sync-rosters').textContent='更新名单';}
 }
-$('retry-rosters').addEventListener('click',loadRosters);
+$('retry-rosters').addEventListener('click',()=>loadRosters());
+$('sync-rosters').addEventListener('click',()=>loadRosters({cloud:true}));
+function applyCachedRosterUpdate(){
+  const snapshot=readCachedRosters();
+  if(snapshot && snapshot.revision>activeRosterRevision){applyRosters(mappedSnapshot(snapshot));$('retry-rosters').hidden=true;}
+}
+window.addEventListener('storage',event=>{if(event.key===ROSTER_CACHE_KEY)applyCachedRosterUpdate();});
+window.addEventListener('focus',applyCachedRosterUpdate);
 
 const typeOptions=[...TYPES,'换人'].map(type=>[type,type==='乌龙'?'乌龙球':type==='两黄'?'两黄转红':type==='换人'?'换人（成对）':type]);
 fill($('event-type'),typeOptions,'进球');fill($('batch-type'),typeOptions,'进球');

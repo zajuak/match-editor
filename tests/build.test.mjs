@@ -20,6 +20,9 @@ test('standalone build resolves versioned entrypoints, modules and roster assets
     }
     const runtime=await readFile(path.join(destination,'runtime-config.mjs'),'utf8');
     assert.ok(runtime.includes('https://example.workers.dev'));assert.ok(!runtime.includes('private-hash'));assert.ok(!runtime.includes('service_role'));
+    const snapshot=JSON.parse(await readFile(path.join(destination,'data/default-rosters.json'),'utf8'));
+    assert.equal(snapshot.version,1);assert.ok(Number.isSafeInteger(snapshot.revision));assert.ok(snapshot.tournaments.length);
+    assert.ok(snapshot.tournaments.every(t=>Object.keys(t).sort().join(',')==='id,lineups,name,position,teams'));
     const manifest=JSON.parse(await readFile(path.join(destination,'data/manifest.json'),'utf8'));
     for(const tournament of manifest.tournaments){
       const roster=JSON.parse(await readFile(path.join(destination,'data',tournament.roster),'utf8'));

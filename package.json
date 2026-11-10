@@ -14,7 +14,8 @@
     "preview": "node scripts/dev.mjs --dir dist",
     "dev:api": "wrangler dev --config cloudflare/wrangler.jsonc",
     "deploy:api": "wrangler deploy --config cloudflare/wrangler.jsonc",
-    "db:migrate": "wrangler d1 migrations apply match-editor-rosters --remote --config cloudflare/wrangler.jsonc"
+    "db:migrate": "wrangler d1 migrations apply match-editor-rosters --remote --config cloudflare/wrangler.jsonc",
+    "sync:rosters": "node scripts/sync-default-rosters.mjs"
   },
   "devDependencies": {
     "jsdom": "^31.0.0",

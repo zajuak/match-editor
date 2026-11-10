@@ -26,7 +26,48 @@ export function mapSharedRosters(input) {
   validateRecords(records);
   return {records,tournaments};
 }
-export async function loadSharedRosters(client) {
-  const data=await client.getRosters();
-  return {...mapSharedRosters(data.tournaments),revision:data.revision};
+export async function loadSharedRosters(client,{storage}={}) {
+  const data=normalizeRosterSnapshot(await client.getRosters());
+  cacheSharedRosters(data,storage);
+  return mappedSnapshot(data);
+}
+
+export const ROSTER_CACHE_KEY='match-editor-rosters-cache-v1';
+const snapshotURL=new URL('./data/default-rosters.json',import.meta.url);
+snapshotURL.search=new URL(import.meta.url).search;
+function localStorageOrNull(storage){
+  if(storage!==undefined)return storage;
+  try{return globalThis.localStorage;}catch{return null;}
+}
+export function normalizeRosterSnapshot(input){
+  if(!input || (input.version!==undefined && input.version!==1) || !Number.isSafeInteger(input.revision) || input.revision<0)throw new Error('默认名单版本无效。');
+  mapSharedRosters(input.tournaments);
+  return {version:1,revision:input.revision,tournaments:[...input.tournaments].sort(byPosition).map((t,i)=>({
+    id:t.id,name:t.name.trim(),lineups:t.lineups!==false,position:i,
+    teams:[...(t.teams||[])].sort(byPosition).map((team,j)=>({id:team.id,name:team.name.trim(),position:j,
+      players:[...(team.players||[])].sort(byPosition).map((p,k)=>({id:p.id,name:p.name.trim(),position:k,legacy_key:typeof p.legacy_key==='string' && p.legacy_key.length<=1000?p.legacy_key:''}))
+    }))
+  }))};
+}
+export function readCachedRosters(storage){
+  try{const value=localStorageOrNull(storage)?.getItem(ROSTER_CACHE_KEY);return value?normalizeRosterSnapshot(JSON.parse(value)):null;}catch{return null;}
+}
+export function cacheSharedRosters(data,storage){
+  const snapshot=normalizeRosterSnapshot(data),target=localStorageOrNull(storage),cached=readCachedRosters(target);
+  if(cached && cached.revision>snapshot.revision)return cached;
+  try{target?.setItem(ROSTER_CACHE_KEY,JSON.stringify(snapshot));}catch{}
+  return snapshot;
+}
+export function mappedSnapshot(snapshot){return {...mapSharedRosters(snapshot.tournaments),revision:snapshot.revision};}
+export async function loadDefaultRosters({fetcher=globalThis.fetch,storage,url=snapshotURL}={}){
+  let published;
+  try{
+    const response=await fetcher(url);
+    if(!response.ok)throw new Error('默认名单读取失败。');
+    published=normalizeRosterSnapshot(await response.json());
+  }catch(error){
+    const cached=readCachedRosters(storage);if(cached)return mappedSnapshot(cached);
+    throw new Error('默认名单读取失败，请刷新页面或重试。');
+  }
+  return mappedSnapshot(cacheSharedRosters(published,storage));
 }
