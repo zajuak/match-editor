@@ -118,3 +118,21 @@ test('browser clients still send requests when AbortController is unavailable',a
     assert.equal((await client.getRosters()).revision,0);assert.equal(called,true);
   }finally{Object.defineProperty(globalThis,'AbortController',descriptor);}
 });
+
+test('default browser fetch keeps its Window receiver instead of the roster client object',async()=>{
+  const original=globalThis.fetch;
+  const calls=[];
+  globalThis.fetch=async function browserFetch(url,options){
+    if(this!==globalThis)throw new TypeError('Illegal invocation');
+    calls.push([url,options.method]);
+    if(options.method==='POST')assert.deepEqual(JSON.parse(options.body),{password:'test-password'});
+    return Response.json({authenticated:true,token:'test-token',user:{id:'admin',name:'管理员'}});
+  };
+  try{
+    const client=new RosterClient('https://api.example',{storage:null});
+    assert.equal((await client.getSession()).user.id,'admin');
+    assert.equal((await client.login('test-password')).user.id,'admin');
+    assert.equal(client.token,'test-token');
+    assert.deepEqual(calls,[['https://api.example/api/session','GET'],['https://api.example/api/login','POST']]);
+  }finally{globalThis.fetch=original;}
+});

@@ -3,7 +3,8 @@ const storageKey='match-editor-admin-session-v1';
 export class RosterClient {
   constructor(baseURL,{storage,fetcher=globalThis.fetch}={}){
     if(!baseURL)throw new Error('尚未配置共享名单服务。');
-    this.baseURL=baseURL.replace(/\/$/,'');this.storage=storage;this.fetcher=fetcher;this.revision=null;this.listeners=new Set();
+    // Native browser fetch requires the global receiver, even when stored on a client.
+    this.baseURL=baseURL.replace(/\/$/,'');this.storage=storage;this.fetcher=fetcher.bind(globalThis);this.revision=null;this.listeners=new Set();
     if(storage===undefined){try{this.storage=globalThis.sessionStorage;}catch{this.storage=null;}}
     try{this.token=this.storage?.getItem(storageKey)||'';}catch{this.token='';}
   }
