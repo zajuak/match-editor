@@ -174,6 +174,7 @@ function applyCachedRosterUpdate(){
 }
 window.addEventListener('storage',event=>{if(event.key===ROSTER_CACHE_KEY)applyCachedRosterUpdate();});
 window.addEventListener('focus',applyCachedRosterUpdate);
+window.addEventListener('pageshow',applyCachedRosterUpdate);
 
 const typeOptions=[...TYPES,'换人'].map(type=>[type,type==='乌龙'?'乌龙球':type==='两黄'?'两黄转红':type==='换人'?'换人（成对）':type]);
 fill($('event-type'),typeOptions,'进球');fill($('batch-type'),typeOptions,'进球');

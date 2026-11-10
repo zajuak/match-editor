@@ -74,7 +74,7 @@ test('editor DOM uses static rosters without backend calls, preserves drafts and
     f.client.getRosters=async()=>{throw new Error('Backend unavailable');};$('sync-rosters').click();
     await until(()=>!$('sync-rosters').disabled);assert.equal($('score').textContent,'1 : 0');assert.equal($('download-svg').disabled,false);assert.equal(JSON.parse(window.localStorage.getItem('junkai-match-editor-v1')).match.events.length,2);
     const newer=structuredClone(readCachedRosters(window.localStorage));newer.revision++;newer.tournaments[0].teams.find(team=>team.id===home.id).name='后台标签页改名';
-    window.localStorage.setItem(ROSTER_CACHE_KEY,JSON.stringify(newer));window.dispatchEvent(new window.Event('focus'));
+    window.localStorage.setItem(ROSTER_CACHE_KEY,JSON.stringify(newer));window.dispatchEvent(new window.Event('pageshow'));
     assert.ok($('poster').textContent.includes('后台标签页改名'));assert.equal(backendCalls,2);
   }finally{dom.window.close();f.sqlite.close();}
 });
