@@ -1,10 +1,11 @@
 import {API_BASE_URL} from './runtime-config.mjs';
 const storageKey='match-editor-admin-session-v1';
 export class RosterClient {
-  constructor(baseURL,{storage=globalThis.sessionStorage,fetcher=globalThis.fetch}={}){
+  constructor(baseURL,{storage,fetcher=globalThis.fetch}={}){
     if(!baseURL)throw new Error('尚未配置共享名单服务。');
     this.baseURL=baseURL.replace(/\/$/,'');this.storage=storage;this.fetcher=fetcher;this.revision=null;this.listeners=new Set();
-    try{this.token=storage?.getItem(storageKey)||'';}catch{this.token='';}
+    if(storage===undefined){try{this.storage=globalThis.sessionStorage;}catch{this.storage=null;}}
+    try{this.token=this.storage?.getItem(storageKey)||'';}catch{this.token='';}
   }
   onSessionChange(listener){this.listeners.add(listener);return ()=>this.listeners.delete(listener);}
   setToken(token){this.token=token;try{if(token)this.storage?.setItem(storageKey,token);else this.storage?.removeItem(storageKey);}catch{}if(!token)for(const listener of this.listeners)listener(null);}

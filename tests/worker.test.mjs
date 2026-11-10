@@ -86,3 +86,13 @@ test('login throttling and input validation reject brute force, missing revision
   const huge=await worker.fetch(new Request('https://api.example/api/admin/tournament',{method:'POST',headers:{Authorization:`Bearer ${good.client.token}`,'Content-Type':'application/json','If-Match':'0'},body:JSON.stringify({name:'x',extra:'z'.repeat(9000)})}),good.env);assert.equal(huge.status,413);
   assert.throws(()=>good.api.createTournament('   '),/名称/);
 });
+
+
+test('public rosters remain available when browser session storage is blocked',async()=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'sessionStorage');
+  Object.defineProperty(globalThis,'sessionStorage',{configurable:true,get(){throw new Error('Storage blocked');}});
+  try{
+    const client=new RosterClient('https://api.example',{fetcher:async()=>Response.json({revision:0,tournaments:[]})});
+    assert.equal(client.token,'');assert.deepEqual((await client.getRosters()).tournaments,[]);
+  }finally{if(previous)Object.defineProperty(globalThis,'sessionStorage',previous);else delete globalThis.sessionStorage;}
+});
