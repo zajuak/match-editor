@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { key, normalizeRosterRecord, validateRecords } from '../src/core.mjs';
+import {RosterClient} from '../src/api-client.mjs';
 
 const DATA_ROOT = new URL('../src/data/', import.meta.url);
 const WOMENS_TOURNAMENT = '2026-27北大杯女子足球赛';
@@ -128,66 +129,22 @@ async function loadSeedPayload() {
   return assertExpectedSeed(buildSeedPayload(manifest, rosterDocuments));
 }
 
-function credentialsFromEnvironment() {
-  const url = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) {
-    throw new Error('请仅通过 process.env 设置 SUPABASE_URL 和 SUPABASE_SERVICE_ROLE_KEY 后运行。');
-  }
-  return { url, serviceRoleKey };
+export async function importRosters(){
+  const url=process.env.MATCH_EDITOR_API_URL,passwordFile=process.env.MATCH_EDITOR_ADMIN_PASSWORD_FILE;
+  if(!url || !passwordFile)throw new Error('请设置 MATCH_EDITOR_API_URL 和本机 MATCH_EDITOR_ADMIN_PASSWORD_FILE。');
+  const password=(await readFile(passwordFile,'utf8')).trim();
+  const payload=process.env.MATCH_EDITOR_ROSTER_FILE?JSON.parse(await readFile(process.env.MATCH_EDITOR_ROSTER_FILE,'utf8')):await loadSeedPayload();
+  assertExpectedSeed(payload);
+  const client=new RosterClient(url,{storage:null});
+  await client.login(password);
+  try{
+    await client.getRosters();
+    const result=await client.request('/api/admin/seed',{method:'POST',body:payload,write:true});
+    const stored=await client.getRosters();
+    const counts={tournaments:stored.tournaments.length,teams:stored.tournaments.reduce((n,t)=>n+t.teams.length,0),players:stored.tournaments.reduce((n,t)=>n+t.teams.reduce((n,t)=>n+t.players.length,0),0)};
+    for(const [table,expected] of Object.entries(EXPECTED_SEED_COUNTS))if(counts[table]!==expected || result.counts[table]!==expected)throw new Error('导入数量不符，请检查数据库。');
+    console.log(`名单导入完成：${counts.tournaments} 赛事、${counts.teams} 球队、${counts.players} 球员。`);
+  }finally{await client.logout();}
 }
-
-function assertRpcCounts(result) {
-  for (const [table, expected] of Object.entries(EXPECTED_SEED_COUNTS)) {
-    if (Number(result?.[table]) !== expected) {
-      throw new Error(`种子事务返回的 ${table} 数量不符（预期 ${expected}），请检查数据库；未执行删除或覆盖。`);
-    }
-  }
-}
-
-async function verifyDatabaseCounts(client) {
-  const entries = await Promise.all(Object.keys(EXPECTED_SEED_COUNTS).map(async table => {
-    const { count, error } = await client.from(table).select('id', { head: true, count: 'exact' });
-    if (error) throw new Error(`回查 ${table} 数量失败：${error.message}`);
-    return [table, count];
-  }));
-  const actual = Object.fromEntries(entries);
-  for (const [table, expected] of Object.entries(EXPECTED_SEED_COUNTS)) {
-    if (actual[table] !== expected) {
-      throw new Error(
-        `导入后回查数量不符：${table} 预期 ${expected}，实际 ${actual[table] ?? '未知'}；`
-        + '请检查数据库，脚本未执行删除或覆盖。',
-      );
-    }
-  }
-  return actual;
-}
-
-export async function importRosters() {
-  const payload = await loadSeedPayload();
-  const { url, serviceRoleKey } = credentialsFromEnvironment();
-
-  let createClient;
-  try {
-    ({ createClient } = await import('@supabase/supabase-js'));
-  } catch {
-    throw new Error('无法加载 @supabase/supabase-js，请先安装该依赖后重试。');
-  }
-  const client = createClient(url, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-  });
-
-  const { data, error } = await client.rpc('seed_rosters', { payload });
-  if (error) throw new Error(`名单种子事务失败，未导入任何数据：${error.message}`);
-  assertRpcCounts(data);
-  const counts = await verifyDatabaseCounts(client);
-  console.log(`名单导入完成：${counts.tournaments} 赛事、${counts.teams} 球队、${counts.players} 球员。`);
-}
-
-const invokedUrl = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '';
-if (import.meta.url === invokedUrl) {
-  importRosters().catch(error => {
-    console.error(`名单导入失败：${error instanceof Error ? error.message : '未知错误'}`);
-    process.exitCode = 1;
-  });
-}
+const invokedUrl=process.argv[1]?pathToFileURL(resolve(process.argv[1])).href:'';
+if(import.meta.url===invokedUrl)importRosters().catch(error=>{console.error(`名单导入失败：${error.message}`);process.exitCode=1;});

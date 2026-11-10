@@ -1,4 +1,4 @@
-import {supabaseClient} from './supabase-client.mjs';
+import {rosterClient} from './api-client.mjs';
 import {loadSharedRosters} from './rosters.mjs';
 import {createAdminApi, escapeXML, readableError, validateName} from './admin-api.mjs';
 
@@ -37,7 +37,7 @@ function showToast(message, isError = false) {
 }
 
 function updateAccount() {
-  $('session-label').textContent = session?.user?.email || (session ? '已登录' : '');
+  $('session-label').textContent = session?.user?.name || (session ? '已登录' : '');
   $('logout').hidden = !session;
   $('logout').disabled = authPending;
 }
@@ -46,7 +46,6 @@ function setAuthPending(value) {
   authPending = value;
   $('login-submit').disabled = value;
   $('login-submit').textContent = value ? '请稍候…' : '登录';
-  $('email').disabled = value;
   $('password').disabled = value;
   $('retry-access').disabled = value;
   updateAccount();
@@ -407,12 +406,9 @@ async function login(event) {
   }
   setAuthPending(true);
   try {
-    const {data, error} = await client.auth.signInWithPassword({
-      email: $('email').value.trim(), password: $('password').value,
-    });
-    if (error) throw readableError(error, '登录失败');
+    const nextSession = await client.login($('password').value);
     $('password').value = '';
-    await activateSession(data.session);
+    await activateSession(nextSession);
   } catch (error) {
     session = null;
     updateAccount();
@@ -427,8 +423,7 @@ async function logout() {
   if (!client || authPending) return;
   setAuthPending(true);
   try {
-    const {error} = await client.auth.signOut();
-    if (error) throw readableError(error, '退出登录失败');
+    await client.logout();
     session = null;
     tournaments = [];
     records = [];
@@ -483,23 +478,16 @@ async function initialize() {
 
   setAuthPending(true);
   try {
-    client = supabaseClient();
+    client = rosterClient();
     api = createAdminApi(client);
-    client.auth.onAuthStateChange((event, nextSession) => {
-      if (event === 'SIGNED_OUT') {
+    client.onSessionChange(nextSession => {
+      if (!nextSession) {
         ++sessionRevision; session = null; tournaments = []; records = [];
         if ($('record-dialog').open) $('record-dialog').close();
         updateAccount(); showView('auth-view');
-      } else if (event === 'TOKEN_REFRESHED') {
-        session = nextSession; updateAccount();
-      } else if (event === 'SIGNED_IN' && nextSession?.user?.id !== session?.user?.id) {
-        // Supabase auth callbacks must finish before another auth/database call.
-        setTimeout(() => { void activateSession(nextSession); }, 0);
       }
     });
-    const {data, error} = await client.auth.getSession();
-    if (error) throw readableError(error, '恢复登录状态失败');
-    await activateSession(data.session);
+    await activateSession(await client.getSession());
   } catch (error) {
     session = null;
     showView('auth-view');

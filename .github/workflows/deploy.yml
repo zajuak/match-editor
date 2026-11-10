@@ -22,8 +22,7 @@ jobs:
       - run: npm test
       - run: npm run build
         env:
-          SUPABASE_URL: ${{ vars.SUPABASE_URL || (github.event_name == 'pull_request' && 'https://example.supabase.co') || '' }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY || (github.event_name == 'pull_request' && 'publishable-ci-only') || '' }}
+          MATCH_EDITOR_API_URL: ${{ vars.MATCH_EDITOR_API_URL || 'https://match-editor-api.junkaizhao404.workers.dev' }}
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:

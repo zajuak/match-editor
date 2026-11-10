@@ -27,7 +27,6 @@ export function mapSharedRosters(input) {
   return {records,tournaments};
 }
 export async function loadSharedRosters(client) {
-  const {data,error}=await client.from('tournaments').select('id,name,lineups,position,teams(id,name,position,players(id,name,position,legacy_key))');
-  if(error)throw new Error(`共享名单读取失败：${error.message}`);
-  return mapSharedRosters(data);
+  const data=await client.getRosters();
+  return {...mapSharedRosters(data.tournaments),revision:data.revision};
 }

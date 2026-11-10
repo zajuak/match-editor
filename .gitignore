@@ -12,3 +12,8 @@ private/
 __pycache__/
 supabase/.branches/
 supabase/.temp/
+
+.wrangler/
+.dev.vars
+cloudflare/.dev.vars
+supabase/

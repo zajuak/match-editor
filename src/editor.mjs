@@ -1,6 +1,6 @@
 import {TYPES,ICONS,TEAM_LEADER,allowsTeamLeader,CUSTOM_TOURNAMENT,escapeXML as esc,blankMatch,rosterFor,parseBatch,sortedEvents,calculateScore,playerLabel,renderPoster,playerId,matchNumber,previousNumber,rememberNumber,setMatchNumber,missingNumbers,restoreState,createPlayerEvents,createCustomEvents,parseCustomBatch,reconcileOfficialDraft,parseCustomStarters,isGoalkeeper,setGoalkeeper,missingGoalkeepers} from './core.mjs';
 import {loadSharedRosters} from './rosters.mjs';
-import {supabaseClient} from './supabase-client.mjs';
+import {rosterClient} from './api-client.mjs';
 const $=id=>document.getElementById(id), storageKey='junkai-match-editor-v1';
 let tournaments=[],records=[],match=blankMatch(),numberHistory={},lineupSide='home',editingId=null,pendingEvents=null,pendingCustom=null,svg='',icons={},draggedId=null,toastTimer,rostersReady=false,customDirty=false;
 try {
@@ -141,7 +141,7 @@ async function loadRosters(){
   $('roster-summary').hidden=false;$('roster-summary').classList.remove('error');$('roster-summary').textContent='正在读取共享报名名单…';$('retry-rosters').hidden=true;
   $('download-svg').disabled=true;$('download-png').disabled=true;
   try{
-    const official=await loadSharedRosters(supabaseClient()),officialRecords=official.records;tournaments=official.tournaments;
+    const official=await loadSharedRosters(rosterClient()),officialRecords=official.records;tournaments=official.tournaments;
     if(isCustom())records=[...officialRecords,...records.filter(r=>r.tournament===CUSTOM_TOURNAMENT)];
     else{records=officialRecords;({match,numberHistory}=reconcileOfficialDraft(match,numberHistory,records,tournaments));}
     rostersReady=true;syncControls();save();$('download-svg').disabled=false;$('download-png').disabled=false;

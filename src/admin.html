@@ -7,7 +7,6 @@
   <title>共享名单管理 · 赛果图编辑器</title>
   <link rel="stylesheet" href="./editor.css">
   <link rel="stylesheet" href="./admin.css">
-  <script src="./vendor/supabase.min.js" defer></script>
   <script type="module" src="./admin.mjs"></script>
 </head>
 <body class="admin-page">
@@ -31,10 +30,8 @@
 
     <section id="auth-view" class="card login-card" aria-labelledby="login-title" hidden>
       <h2 id="login-title">管理员登录</h2>
-      <p class="hint">使用已授权的管理员邮箱和密码登录。本页面不提供注册。</p>
+      <p class="hint">输入后台管理密码，维护共享赛事和名单。</p>
       <form id="login-form">
-        <label for="email">邮箱</label>
-        <input id="email" name="email" type="email" autocomplete="username" required maxlength="320" placeholder="name@example.com">
         <label for="password">密码</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="输入密码">
         <p id="auth-error" class="error form-error" role="alert"></p>

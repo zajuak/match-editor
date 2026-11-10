@@ -55,14 +55,13 @@ test('seed payload matches all published players and retains every legacy key',a
   assert.equal(new Set(payload.players.map(p=>p.legacy_key)).size,626);assert.equal(payload.tournaments[1].lineups,false);
 });
 
-test('public runtime config rejects secrets and emits only publishable values',()=>{
-  const environment={SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'publishable'};
-  assert.deepEqual(publicRuntimeConfig(environment),{url:environment.SUPABASE_URL,key:'publishable'});
-  assert.ok(!renderRuntimeConfig(environment).includes('service_role'));
-  assert.throws(()=>publicRuntimeConfig({...environment,SUPABASE_PUBLISHABLE_KEY:'sb_secret_bad'}),/不能包含/);
+test('public runtime config exposes only the API URL and rejects credentials in URLs',()=>{
+  const environment={MATCH_EDITOR_API_URL:'https://example.workers.dev',ADMIN_PASSWORD_HASH:'private-hash'};
+  assert.deepEqual(publicRuntimeConfig(environment),{url:environment.MATCH_EDITOR_API_URL});
+  assert.ok(!renderRuntimeConfig(environment).includes('private-hash'));
+  assert.throws(()=>publicRuntimeConfig({MATCH_EDITOR_API_URL:'https://user:secret@example.com'}),/不能包含/);
   assert.throws(()=>publicRuntimeConfig({}, {required:true}),/构建需要/);
 });
-
 
 test('deleted UUIDs never attach drafts to a newly created team or tournament with the same name',()=>{
   const cloud=mapSharedRosters(cloudFixture());
@@ -83,13 +82,6 @@ test('v3 cloud UUIDs and admin-defined names are not overwritten by old static a
   assert.equal(saved.records[0].id,'cloud-player');assert.equal(saved.records[0].team,'法学院');assert.equal(saved.records[0].name,'申宇颢');
   assert.deepEqual(saved.match.starters.home,['cloud-player']);assert.equal(matchNumber(saved.match,'home','cloud-player'),'7');
 });
-
-test('JWT service-role and user tokens cannot enter public runtime config',()=>{
-  const jwt=role=>Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({role})).toString('base64url')+'.sig';
-  for(const role of ['service_role','authenticated'])assert.throws(()=>publicRuntimeConfig({SUPABASE_PUBLISHABLE_KEY:jwt(role)}),/只允许/);
-  assert.equal(publicRuntimeConfig({SUPABASE_PUBLISHABLE_KEY:jwt('anon')}).key,jwt('anon'));
-});
-
 
 test('first cloud migration preserves old drafts even if admins already renamed all roster names',()=>{
   const oldId=key('杯赛','红队','张三'),match={...blankMatch(),tournament:'杯赛',title:'杯赛',home:'红队',away:'蓝队'};

@@ -1,2 +1,1 @@
-# Preserve the upstream UMD bundle byte for byte, including template-string whitespace.
-src/vendor/supabase.min.js -whitespace
+* text=auto
