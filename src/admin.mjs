@@ -1,6 +1,8 @@
 import {rosterClient} from './api-client.mjs';
 import {loadSharedRosters} from './rosters.mjs';
 import {createAdminApi, escapeXML, readableError, validateName} from './admin-api.mjs';
+import {readRegistrationFiles} from './registration-import.mjs';
+import {planRegistrationImport} from './registration-plan.mjs';
 
 const $ = id => document.getElementById(id);
 const labels = {tournament: '赛事', team: '球队', player: '球员'};
@@ -22,6 +24,9 @@ let dialogContext = null;
 let operationMessage = '';
 let toastTimer;
 let sessionRevision = 0;
+let importContext = null;
+let importPending = false;
+let importReadVersion = 0;
 
 function showView(id) {
   for (const view of views) $(view).hidden = view !== id;
@@ -136,6 +141,7 @@ function renderAll() {
   $('add-team').disabled = pending || !tournament;
   $('add-player').disabled = pending || !team;
   $('refresh-rosters').disabled = pending;
+  $('import-registration').disabled = pending || !tournaments.length;
   $('refresh-rosters').textContent = pending ? '正在处理…' : '刷新共享名单';
   $('player-search').disabled = pending || !team;
   if ($('player-search').value !== playerSearch) $('player-search').value = playerSearch;
@@ -199,6 +205,133 @@ async function perform(task, loadingMessage, successMessage = '') {
 
 function refreshRosters(showConfirmation = false) {
   return perform(reloadRosters, '正在刷新共享名单…', showConfirmation ? '共享名单已刷新。' : '');
+}
+
+function importTournament() {
+  const tournament = tournaments.find(t => t.id === importContext?.tournamentId);
+  return tournament && {...tournament, teams: tournament.teams.map(team => ({...team, players: records.filter(p => p.teamId === team.id)}))};
+}
+
+function setImportBusy(value, message = '') {
+  importPending = value;
+  for (const id of ['import-files','import-tournament','import-mode']) $(id).disabled = value;
+  $('import-dialog').querySelectorAll('[data-close-import], [data-import-target], [data-import-name]').forEach(control => { control.disabled = value || (control.hasAttribute('data-import-name') && Boolean(importContext?.entries[Number(control.dataset.importName)]?.teamId)); });
+  $('import-submit').disabled = value || !importContext?.plan;
+  $('import-submit').textContent = message || '确认更新名单';
+}
+
+function closeImportDialog() {
+  if (!importPending) $('import-dialog').close();
+}
+
+function openImportDialog() {
+  if (pending || !tournaments.length) return;
+  importContext = {tournamentId: selectedTournamentId, revision: client.revision, entries: [], plan: null};
+  $('import-tournament').innerHTML = tournaments.map(t => `<option value="${escapeXML(t.id)}">${escapeXML(t.name)}</option>`).join('');
+  $('import-tournament').value = selectedTournamentId;
+  $('import-files').value = '';
+  $('import-mode').value = 'merge';
+  $('import-preview').innerHTML = '';
+  $('import-error').textContent = '';
+  $('import-status').textContent = '选择报名表后显示识别结果，确认后才会更新共享名单。';
+  setImportBusy(false);
+  $('import-dialog').showModal();
+}
+
+function renderImportPreview() {
+  if (!importContext) return;
+  const tournament = importTournament();
+  importContext.plan = null;
+  $('import-error').textContent = '';
+  if (!importContext.entries.length) {
+    $('import-status').textContent = '请选择报名表。';
+    setImportBusy(importPending); return;
+  }
+  try {
+    importContext.plan = planRegistrationImport(tournament, importContext.entries, $('import-mode').value);
+  } catch (error) {
+    $('import-error').textContent = error.message;
+  }
+  const counts = importContext.plan?.counts;
+  $('import-status').textContent = counts
+    ? `已识别 ${counts.teams} 支球队：新建 ${counts.newTeams} 支球队，新增 ${counts.added} 人，沿用 ${counts.kept} 人，移除 ${counts.removed} 人。`
+    : '请修正下方球队对应关系后再提交。';
+  $('import-preview').innerHTML = importContext.entries.map((entry, index) => {
+    const team = tournament?.teams.find(t => t.id === entry.teamId);
+    const current = new Set(team?.players.map(p => p.name) || []);
+    const removed = $('import-mode').value === 'replace' ? (team?.players || []).filter(p => !entry.players.includes(p.name)) : [];
+    return `<section class="import-team">
+      <h3>${escapeXML(entry.fileName)}</h3>
+      <p class="hint">识别球队：${escapeXML(entry.detectedName)} · ${entry.players.length} 名球员</p>
+      <label for="import-target-${index}">更新目标</label>
+      <select id="import-target-${index}" data-import-target="${index}">
+        <option value=""${!entry.teamId ? ' selected' : ''}>新建球队</option>
+        ${(tournament?.teams || []).map(t => `<option value="${escapeXML(t.id)}"${entry.teamId === t.id ? ' selected' : ''}>${escapeXML(t.name)}</option>`).join('')}
+      </select>
+      <label for="import-name-${index}">球队名称</label>
+      <input id="import-name-${index}" data-import-name="${index}" maxlength="80" value="${escapeXML(team?.name || entry.name)}"${team ? ' disabled' : ''}>
+      <div class="import-names">${entry.players.map(name => `<span class="${current.has(name) ? '' : 'import-added'}">${current.has(name) ? '沿用' : '新增'} ${escapeXML(name)}</span>`).join('')}</div>
+      ${removed.length ? `<p class="import-removed">将移除：${removed.map(p => escapeXML(p.name)).join('、')}</p>` : ''}
+    </section>`;
+  }).join('');
+  setImportBusy(importPending);
+}
+
+async function readImportFiles() {
+  if (importPending || !importContext) return;
+  const version = ++importReadVersion;
+  importContext.tournamentId = $('import-tournament').value;
+  importContext.entries = []; importContext.plan = null;
+  $('import-preview').innerHTML = ''; $('import-error').textContent = '';
+  if (!$('import-files').files.length) {
+    $('import-status').textContent = '请选择报名表。'; setImportBusy(false); return;
+  }
+  setImportBusy(true, '正在识别…');
+  $('import-status').textContent = '正在读取报名表…';
+  try {
+    const tournament = importTournament();
+    const parsed = await readRegistrationFiles($('import-files').files, tournament.name);
+    if (version !== importReadVersion || !importContext) return;
+    importContext.entries = parsed.map(file => ({fileName: file.fileName, detectedName: file.teamName, teamId: tournament.teams.find(t => t.name === file.teamName)?.id || null, name: file.teamName, players: file.players}));
+    renderImportPreview();
+  } catch (error) {
+    if (version === importReadVersion && importContext) {
+      $('import-error').textContent = error.message;
+      $('import-status').textContent = '未提交任何修改。请检查文件后重新选择。';
+    }
+  } finally {
+    if (version === importReadVersion) setImportBusy(false);
+  }
+}
+
+async function submitImport(event) {
+  event.preventDefault();
+  if (pending || importPending || !importContext?.plan) return;
+  $('import-preview').querySelectorAll('[data-import-name]').forEach(input => {
+    const entry = importContext.entries[Number(input.dataset.importName)];
+    if (!entry.teamId) entry.name = input.value;
+  });
+  renderImportPreview();
+  if (!importContext.plan) return;
+  if (client.revision !== importContext.revision) {
+    $('import-error').textContent = '名单版本已变化，请取消导入、刷新名单并重新预览。'; return;
+  }
+  const context = importContext;
+  pending = true; setImportBusy(true, '正在更新…'); renderAll();
+  let submitted = false;
+  try {
+    await api.importRegistration(context.tournamentId, context.entries.map(({teamId,name,players}) => ({teamId,name,players})), $('import-mode').value);
+    submitted = true;
+    $('import-dialog').close();
+    await reloadRosters();
+    selectedTournamentId = context.tournamentId; reconcileSelection(); playerSearch = '';
+    showWorkspaceError(''); showToast('报名表名单已更新。');
+  } catch (error) {
+    if (submitted) showWorkspaceError(`名单已提交，但刷新失败：${error.message}。请刷新共享名单。`);
+    else if (importContext) $('import-error').textContent = error.message;
+  } finally {
+    pending = false; setImportBusy(false); renderAll();
+  }
 }
 
 async function activateSession(nextSession) {
@@ -432,6 +565,7 @@ async function logout() {
     playerSearch = '';
     dialogContext = null;
     if ($('record-dialog').open) $('record-dialog').close();
+    if ($('import-dialog').open) $('import-dialog').close();
     showWorkspaceError('');
     $('auth-error').textContent = '';
     $('password').value = '';
@@ -462,6 +596,21 @@ async function initialize() {
   $('add-tournament').addEventListener('click', () => openRecordDialog('tournament', 'create'));
   $('add-team').addEventListener('click', () => openRecordDialog('team', 'create'));
   $('add-player').addEventListener('click', () => openRecordDialog('player', 'create'));
+  $('import-registration').addEventListener('click', openImportDialog);
+  $('import-files').addEventListener('change', () => { void readImportFiles(); });
+  $('import-tournament').addEventListener('change', () => { void readImportFiles(); });
+  $('import-mode').addEventListener('change', renderImportPreview);
+  $('import-preview').addEventListener('change', event => {
+    if (importPending || !importContext) return;
+    const target = event.target;
+    if (target.hasAttribute('data-import-target')) importContext.entries[Number(target.dataset.importTarget)].teamId = target.value || null;
+    if (target.hasAttribute('data-import-name')) importContext.entries[Number(target.dataset.importName)].name = target.value;
+    renderImportPreview();
+  });
+  $('import-form').addEventListener('submit', submitImport);
+  $('import-dialog').querySelectorAll('[data-close-import]').forEach(button => button.addEventListener('click', closeImportDialog));
+  $('import-dialog').addEventListener('cancel', event => { if (importPending) event.preventDefault(); });
+  $('import-dialog').addEventListener('close', () => { ++importReadVersion; importContext = null; importPending = false; });
   $('player-search').addEventListener('input', event => {
     playerSearch = event.target.value;
     renderPanel('player');
@@ -484,6 +633,7 @@ async function initialize() {
       if (!nextSession) {
         ++sessionRevision; session = null; tournaments = []; records = [];
         if ($('record-dialog').open) $('record-dialog').close();
+        if ($('import-dialog').open) $('import-dialog').close();
         updateAccount(); showView('auth-view');
       }
     });

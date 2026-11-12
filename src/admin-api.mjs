@@ -14,6 +14,7 @@ export function createAdminApi(client){
     createTournament:(name,lineups=true)=>create('tournament',{name:validateName(name,'赛事名称'),lineups}),
     createTeam:(tournament_id,name)=>create('team',{tournament_id,name:validateName(name,'球队名称')}),
     createPlayer:(team_id,name)=>create('player',{team_id,name:validateName(name,'球员姓名')}),
+    importRegistration:(tournamentId,teams,mode)=>client.request('/api/admin/import',{method:'POST',body:{tournamentId,teams,mode},write:true}),
     updateTournament:(recordId,{name,lineups}={})=>patch('tournament',recordId,{...(name===undefined?{}:{name:validateName(name,'赛事名称')}),...(lineups===undefined?{}:{lineups})}),
     renameTournament:(recordId,name)=>patch('tournament',recordId,{name:validateName(name,'赛事名称')}),
     setTournamentLineups:(recordId,lineups)=>patch('tournament',recordId,{lineups}),

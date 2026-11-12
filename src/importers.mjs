@@ -1,8 +1,9 @@
 import {validateRecords,normalizeRosterRecord} from './core.mjs';
 const WORD='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
-function wordDocument(xml) {
-  const doc=new DOMParser().parseFromString(xml,'application/xml');
+export function wordDocument(xml,{Parser=globalThis.DOMParser}={}) {
+  if(/<!DOCTYPE|<!ENTITY/i.test(xml))throw new Error('Word 文档含不支持的 XML 声明。');
+  const doc=new Parser().parseFromString(xml,'application/xml');
   if(doc.getElementsByTagName('parsererror').length)throw new Error('Word 文档内容损坏，无法读取。');
   const paragraphText=p=>[...p.getElementsByTagNameNS(WORD,'t')].map(t=>t.textContent).join('').trim();
   const tables=[...doc.getElementsByTagNameNS(WORD,'tbl')].map(table=>[...table.children].filter(n=>n.localName==='tr').map(row=>[...row.children].filter(n=>n.localName==='tc').flatMap(cell=>{

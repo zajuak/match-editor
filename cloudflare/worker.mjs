@@ -1,4 +1,5 @@
 import {login,sessionFor} from './auth.mjs';
+import {planRegistrationImport} from '../src/registration-plan.mjs';
 const entities={tournament:{table:'tournaments',parent:null},team:{table:'teams',parent:'tournament_id'},player:{table:'players',parent:'team_id'}};
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const name=value=>{if(typeof value!=='string' || !value.trim() || value.trim().length>80)fail('名称需为 1–80 个字符。');return value.trim();};
@@ -60,6 +61,31 @@ export async function handleApi(request,env){
   }
   if(!path.startsWith('/api/admin/'))fail('接口不存在。',404);
   if(!session)fail('请先登录管理员账号。',401);
+  if(path==='/api/admin/import' && request.method==='POST'){
+    const body=await readBody(request,2*1024*1024),tournamentId=identifier(body.tournamentId);
+    const snapshot=await sharedRosters(db),tournament=snapshot.tournaments.find(t=>t.id===tournamentId);
+    if(!tournament)fail('赛事不存在，请刷新名单后重试。',404);
+    let plan;
+    try{plan=planRegistrationImport(tournament,body.teams,body.mode);}catch(error){fail(error.message);}
+    const newTeams=[],newPlayers=[],positions=[],removed=[];
+    let nextPosition=Math.max(-1,...tournament.teams.map(t=>t.position))+1;
+    for(const team of plan.teams){
+      const teamId=team.teamId||crypto.randomUUID();
+      if(!team.teamId)newTeams.push({id:teamId,tournament_id:tournamentId,name:team.name,position:nextPosition++});
+      team.players.forEach((p,position)=>{
+        if(p.id)positions.push({id:p.id,position});
+        else newPlayers.push({id:crypto.randomUUID(),team_id:teamId,name:p.name,position});
+      });
+      removed.push(...team.removed.map(p=>p.id));
+    }
+    const revision=await mutate(request,db,token=>[
+      db.prepare("INSERT INTO teams(id,tournament_id,name,position) SELECT json_extract(value,'$.id'),json_extract(value,'$.tournament_id'),json_extract(value,'$.name'),json_extract(value,'$.position') FROM json_each(?) WHERE EXISTS(SELECT 1 FROM roster_state WHERE mutation_token=?)").bind(JSON.stringify(newTeams),token),
+      db.prepare('DELETE FROM players WHERE id IN (SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM roster_state WHERE mutation_token=?)').bind(JSON.stringify(removed),token),
+      db.prepare("UPDATE players SET position=(SELECT json_extract(value,'$.position') FROM json_each(?) WHERE json_extract(value,'$.id')=players.id) WHERE id IN (SELECT json_extract(value,'$.id') FROM json_each(?)) AND EXISTS(SELECT 1 FROM roster_state WHERE mutation_token=?)").bind(JSON.stringify(positions),JSON.stringify(positions),token),
+      db.prepare("INSERT INTO players(id,team_id,name,position) SELECT json_extract(value,'$.id'),json_extract(value,'$.team_id'),json_extract(value,'$.name'),json_extract(value,'$.position') FROM json_each(?) WHERE EXISTS(SELECT 1 FROM roster_state WHERE mutation_token=?)").bind(JSON.stringify(newPlayers),token)
+    ]);
+    return Response.json({revision,counts:plan.counts});
+  }
   if(path==='/api/admin/seed' && request.method==='POST'){
     const payload=normalizeSeed(await readBody(request,1024*1024));
     const revision=await mutate(request,db,token=>[

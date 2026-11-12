@@ -7,6 +7,7 @@
   <title>共享名单管理 · 赛果图编辑器</title>
   <link rel="stylesheet" href="./editor.css">
   <link rel="stylesheet" href="./admin.css">
+  <script src="./vendor/fflate.min.js"></script>
   <script type="module" src="./admin.mjs"></script>
 </head>
 <body class="admin-page">
@@ -52,7 +53,10 @@
           <h2>赛事 → 球队 → 球员</h2>
           <p id="roster-status" class="hint" role="status">正在读取共享名单…</p>
         </div>
-        <button id="refresh-rosters" class="secondary" type="button">刷新共享名单</button>
+        <div class="toolbar-actions">
+          <button id="import-registration" class="primary" type="button" disabled>上传报名表</button>
+          <button id="refresh-rosters" class="secondary" type="button">刷新共享名单</button>
+        </div>
       </div>
       <p id="workspace-error" class="error workspace-error" role="alert" hidden></p>
 
@@ -110,6 +114,35 @@
       <footer class="dialog-footer">
         <button class="secondary" type="button" data-close-dialog>取消</button>
         <button id="record-submit" class="primary" type="submit">保存</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="import-dialog" aria-labelledby="import-title">
+    <header class="dialog-header">
+      <h2 id="import-title">上传报名表</h2>
+      <button class="close" type="button" data-close-import aria-label="关闭报名表导入">×</button>
+    </header>
+    <form id="import-form">
+      <div class="dialog-body">
+        <label for="import-tournament">导入到赛事</label>
+        <select id="import-tournament" required></select>
+        <label for="import-files">Word 报名表（可多选）</label>
+        <input id="import-files" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple>
+        <p class="hint">支持新生杯双栏和女足北大杯单栏格式。每份不超过 5 MB，每次最多 50 份、合计 25 MB。只读取球队和球员姓名，不导入号码、联系方式或备注。</p>
+        <label for="import-mode">更新方式</label>
+        <select id="import-mode">
+          <option value="merge">补充名单：保留现有球员，只添加新姓名</option>
+          <option value="replace">替换整队名单：移除报名表中没有的球员</option>
+        </select>
+        <p class="hint">同名球员保留原有身份及历史关联。更名请使用“编辑球员”；替换模式会删除未列出的球员，影响相关草稿。</p>
+        <p id="import-status" class="hint" role="status">选择报名表后显示识别结果，确认后才会更新共享名单。</p>
+        <div id="import-preview"></div>
+        <p id="import-error" class="error form-error" role="alert"></p>
+      </div>
+      <footer class="dialog-footer">
+        <button class="secondary" type="button" data-close-import>取消</button>
+        <button id="import-submit" class="primary" type="submit" disabled>确认更新名单</button>
       </footer>
     </form>
   </dialog>

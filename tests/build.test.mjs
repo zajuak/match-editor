@@ -11,9 +11,9 @@ test('standalone build resolves versioned entrypoints, modules and roster assets
     const {destination,version}=await build(path.join(temp,'dist'),{environment:{MATCH_EDITOR_API_URL:'https://example.workers.dev',ADMIN_PASSWORD_HASH:'private-hash'},requireConfig:true});
     const html=await readFile(path.join(destination,'index.html'),'utf8');
     assert.ok(html.includes(`./editor.mjs?v=${version}`));assert.ok(html.includes(`./editor.css?v=${version}`));
-    for(const file of ['index.html','admin.html','editor.mjs','admin.mjs','admin-api.mjs','rosters.mjs','api-client.mjs','importers.mjs']){
+    for(const file of ['index.html','admin.html','editor.mjs','admin.mjs','admin-api.mjs','rosters.mjs','api-client.mjs','importers.mjs','registration-import.mjs','registration-plan.mjs']){
       const content=await readFile(path.join(destination,file),'utf8');
-      const references=file==='index.html'?/(?:src=|href=)['"](\.\/[^'"]+)['"]/g:/from ['"](\.\/[^'"]+)['"]/g;
+      const references=file.endsWith('.html')?/(?:src=|href=)['"](\.\/[^'"]+)['"]/g:/from ['"](\.\/[^'"]+)['"]/g;
       for(const [,relative] of content.matchAll(references)){
         assert.ok((await stat(path.join(destination,relative.split('?')[0]))).isFile(),relative);
       }
