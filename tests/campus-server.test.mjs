@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,writeFile,rm,mkdir} from 'node:fs/promises';
+import {mkdtemp,writeFile,rm,mkdir,symlink} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {build} from '../scripts/build.mjs';
@@ -68,4 +70,28 @@ test('campus database refuses unseeded initialization and rolls back invalid sna
     assert.equal((await db.prepare('SELECT revision FROM roster_state').first()).revision,7);
     assert.equal((await db.prepare('SELECT count(*) AS n FROM players').first()).n,2);db.close();
   }finally{await rm(temporary,{recursive:true,force:true});}
+});
+
+test('campus command starts through the current release symlink and stops cleanly',async()=>{
+  const temporary=await mkdtemp(path.join(tmpdir(),'match-editor-campus-link-'));
+  let child;
+  try{
+    const seedFile=path.join(temporary,'seed.json');await writeFile(seedFile,JSON.stringify(seed));
+    const {destination}=await build(path.join(temporary,'dist'),{environment:{MATCH_EDITOR_SAME_ORIGIN:'true'},requireConfig:true});
+    await symlink(fileURLToPath(new URL('../',import.meta.url)),path.join(temporary,'current'),'dir');
+    child=spawn(process.execPath,[path.join(temporary,'current/server/main.mjs')],{env:{...process.env,HOST:'127.0.0.1',PORT:'0',PUBLIC_ORIGIN:'http://127.0.0.1',DATA_DIR:path.join(temporary,'db'),STATIC_DIR:destination,SEED_FILE:seedFile,ADMIN_PASSWORD_HASH:await passwordHash('test-only-campus-password')},stdio:['ignore','pipe','pipe']});
+    const port=await new Promise((resolve,reject)=>{
+      let output='',errors='';
+      const timer=setTimeout(()=>reject(new Error(`Campus startup timed out: ${errors}`)),5000);
+      child.stderr.on('data',chunk=>{errors+=chunk;});
+      child.stdout.on('data',chunk=>{output+=chunk;const match=output.match(/listening on port (\d+)/);if(match){clearTimeout(timer);resolve(Number(match[1]));}});
+      child.once('error',error=>{clearTimeout(timer);reject(error);});
+      child.once('exit',code=>{clearTimeout(timer);reject(new Error(`Campus command exited before startup (${code}): ${errors}`));});
+    });
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/health`)).json()).ok,true);
+    const exited=new Promise(resolve=>child.once('exit',resolve));child.kill('SIGTERM');assert.equal(await exited,0);
+  }finally{
+    if(child && child.exitCode===null){const exited=new Promise(resolve=>child.once('exit',resolve));child.kill('SIGKILL');await exited;}
+    await rm(temporary,{recursive:true,force:true});
+  }
 });

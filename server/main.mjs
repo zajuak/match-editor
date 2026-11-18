@@ -71,7 +71,7 @@ export async function startCampusServer(env=process.env){
   return server;
 }
 
-if(process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href===import.meta.url){
+if(process.argv[1] && pathToFileURL(await realpath(process.argv[1])).href===import.meta.url){
   const server=await startCampusServer();
   console.log(`Match editor listening on port ${server.address().port} (independent database)`);
   for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{server.close(()=>process.exit(0));});
