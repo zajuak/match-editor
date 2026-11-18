@@ -5,6 +5,7 @@
 - 在线使用：https://zajuak.github.io/match-editor/
 - GitHub 仓库：https://github.com/zajuak/match-editor
 - 个人网站旧链接：https://zajuak.github.io/tools/match-editor/（跳转到独立版本）
+- 校内独立副本：http://10.129.83.25:8083/（[部署说明](server/README.md)；名单与云端分别维护）
 
 ## 本地开发
 

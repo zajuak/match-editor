@@ -61,6 +61,8 @@ test('public runtime config exposes only the API URL and rejects credentials in 
   assert.ok(!renderRuntimeConfig(environment).includes('private-hash'));
   assert.throws(()=>publicRuntimeConfig({MATCH_EDITOR_API_URL:'https://user:secret@example.com'}),/不能包含/);
   assert.throws(()=>publicRuntimeConfig({}, {required:true}),/构建需要/);
+  assert.equal(renderRuntimeConfig({MATCH_EDITOR_SAME_ORIGIN:'true'},{required:true}),'export const API_BASE_URL = globalThis.location.origin;\n');
+  assert.throws(()=>publicRuntimeConfig({...environment,MATCH_EDITOR_SAME_ORIGIN:'true'}),/同时指定/);
 });
 
 test('deleted UUIDs never attach drafts to a newly created team or tournament with the same name',()=>{

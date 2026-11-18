@@ -11,6 +11,23 @@ const records=[
 const [zhang,li,wang]=records.map(playerId);
 function readyMatch(){const match={...blankMatch(),tournament:'杯赛',home:'红队',away:'蓝队'};setMatchNumber(match,records,'home',zhang,'1');setMatchNumber(match,records,'home',li,'7');setMatchNumber(match,records,'away',wang,'10');return match;}
 
+test('HTTP browsers without crypto.randomUUID can create matches and every kind of event',()=>{
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis.crypto,'randomUUID');
+  Object.defineProperty(globalThis.crypto,'randomUUID',{configurable:true,value:undefined});
+  try{
+    const match=readyMatch(),events=[
+      ...createPlayerEvents('进球','1','home',[zhang],match,records),
+      ...createPlayerEvents('乌龙','2','away',[],match,records),
+      ...createPlayerEvents('黄牌','3','home',[TEAM_LEADER],match,records),
+      ...createPlayerEvents('换人','4','home',[zhang,li],match,records)
+    ];
+    const ids=[match.id,...events.map(e=>e.id)];
+    assert.equal(new Set(ids).size,ids.length);
+    assert.ok(ids.every(id=>/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)));
+    match.events=events;assert.ok(renderPoster(match,records).includes('张三'));
+  }finally{if(descriptor)Object.defineProperty(globalThis.crypto,'randomUUID',descriptor);else delete globalThis.crypto.randomUUID;}
+});
+
 test('each side selects exactly one goalkeeper from its own starters',()=>{
   const match=readyMatch();match.starters={home:[zhang,li],away:[wang]};
   assert.deepEqual(missingGoalkeepers(match,records),['红队','蓝队']);

@@ -11,6 +11,8 @@
     "dev": "node scripts/dev.mjs",
     "test": "node --test tests/*.test.mjs",
     "build": "node scripts/build.mjs",
+    "build:campus": "node scripts/build-campus.mjs",
+    "start:campus": "node server/main.mjs",
     "preview": "node scripts/dev.mjs --dir dist",
     "dev:api": "wrangler dev --config cloudflare/wrangler.jsonc",
     "deploy:api": "wrangler deploy --config cloudflare/wrangler.jsonc",

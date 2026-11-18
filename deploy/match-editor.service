@@ -1,0 +1,30 @@
+[Unit]
+Description=Football match editor (independent campus database)
+After=network.target
+
+[Service]
+Type=simple
+User=match-editor
+Group=match-editor
+WorkingDirectory=/opt/match-editor/current
+Environment=HOST=0.0.0.0
+Environment=PORT=8083
+Environment=PUBLIC_ORIGIN=http://10.129.83.25:8083
+Environment=STATIC_DIR=/opt/match-editor/current/campus-dist
+Environment=DATA_DIR=/var/lib/match-editor
+Environment=SEED_FILE=/var/lib/match-editor/initial-copy.json
+EnvironmentFile=/etc/match-editor.env
+ExecStart=/opt/match-editor/runtime/bin/node /opt/match-editor/current/server/main.mjs
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StateDirectory=match-editor
+StateDirectoryMode=0700
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

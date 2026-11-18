@@ -1,4 +1,8 @@
 export function publicRuntimeConfig(environment=process.env,{required=false}={}){
+  if(environment.MATCH_EDITOR_SAME_ORIGIN==='true'){
+    if(environment.MATCH_EDITOR_API_URL)throw new Error('同源部署不能同时指定外部 API 地址。');
+    return {url:'same-origin'};
+  }
   const url=environment.MATCH_EDITOR_API_URL||'';
   if(required && !url)throw new Error('构建需要 MATCH_EDITOR_API_URL。');
   if(url){
@@ -7,4 +11,7 @@ export function publicRuntimeConfig(environment=process.env,{required=false}={})
   }
   return {url};
 }
-export function renderRuntimeConfig(environment=process.env,options){return `export const API_BASE_URL = ${JSON.stringify(publicRuntimeConfig(environment,options).url)};\n`;}
+export function renderRuntimeConfig(environment=process.env,options){
+  const {url}=publicRuntimeConfig(environment,options);
+  return url==='same-origin'?'export const API_BASE_URL = globalThis.location.origin;\n':`export const API_BASE_URL = ${JSON.stringify(url)};\n`;
+}

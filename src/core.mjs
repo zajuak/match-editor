@@ -15,7 +15,14 @@ export function normalizeRosterRecord(player){
 
 export const escapeXML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export const key = (...parts) => JSON.stringify(parts);
-export const blankMatch = () => ({id:crypto.randomUUID(),tournament:'',tournamentId:'',home:'',away:'',teamIds:{home:'',away:''},title:'',starters:{home:[],away:[]},goalkeepers:{home:'',away:''},numbers:{home:{},away:{}},events:[],showLineups:true});
+export function randomId(){
+  if(typeof globalThis.crypto.randomUUID==='function')return globalThis.crypto.randomUUID();
+  const bytes=globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=Array.from(bytes,n=>n.toString(16).padStart(2,'0')).join('');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+export const blankMatch = () => ({id:randomId(),tournament:'',tournamentId:'',home:'',away:'',teamIds:{home:'',away:''},title:'',starters:{home:[],away:[]},goalkeepers:{home:'',away:''},numbers:{home:{},away:{}},events:[],showLineups:true});
 export const playerId = player => player.id || key(player.tournament,player.team,player.name);
 export const matchNumber = (match,side,player) => match.numbers?.[side]?.[typeof player==='string'?player:playerId(player)] || '';
 export const isGoalkeeper = (match,side,player) => {
@@ -250,11 +257,11 @@ export function createPlayerEvents(type,time,side,ids,match,records) {
   if(!validTime(time))throw new Error('时间应为 12、40+2 或“点”。');
   if(!TYPES.includes(type) && type!=='换人')throw new Error('请选择事件类型。');
   if(!['home','away'].includes(side) || !match[side])throw new Error('请选择球队。');
-  if(type==='乌龙')return [{id:crypto.randomUUID(),time,side,type,teamRole:'scoring'}];
-  if(allowsTeamLeader(type) && ids.length===1 && ids[0]===TEAM_LEADER)return [{id:crypto.randomUUID(),time,side,type,recipient:'leader'}];
+  if(type==='乌龙')return [{id:randomId(),time,side,type,teamRole:'scoring'}];
+  if(allowsTeamLeader(type) && ids.length===1 && ids[0]===TEAM_LEADER)return [{id:randomId(),time,side,type,recipient:'leader'}];
   if(ids.length!==(type==='换人'?2:1) || ids.some(id=>!rosterFor(records,match,side).some(p=>playerId(p)===id)))throw new Error('请选择有效球员。');
   if(type==='换人' && ids[0]===ids[1])throw new Error('换上与换下球员不能相同。');
-  return ids.map((id,j)=>({id:crypto.randomUUID(),time,side,playerId:id,type:type==='换人'?(j?'换上':'换下'):type}));
+  return ids.map((id,j)=>({id:randomId(),time,side,playerId:id,type:type==='换人'?(j?'换上':'换下'):type}));
 }
 export function createCustomEvents(type,time,side,entries,match,records) {
   if(match.tournament!==CUSTOM_TOURNAMENT)throw new Error('手动填写姓名仅用于自定义比赛。');
